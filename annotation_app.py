@@ -23,7 +23,14 @@ def get_sheet():
 
 
 # --- USER AUTHENTICATION / LOGIN ---
-st.title("🏷️ Data Annotation Tool")
+st.title("Slang czy nie slang? Oto jest pytanie")
+
+st.markdown(
+    """
+    Twoim zadaniem jest określenie czy podane słowo zostało użyte zgodnie z podaną definicją w wylosowanym komentarzu.
+    W trakcie oceny ważne jest, byś brał/a pod uwagę **podaną** definicję słowa, nawet jeśli się z nią osobiście nie zgadzasz.
+    """
+)
 
 if 'user_name' not in st.session_state:
     st.subheader("Enter your username to begin")
@@ -42,14 +49,26 @@ if 'user_name' not in st.session_state:
             st.warning("Please enter a username.")
     st.stop()
 
-# Sidebar display for user status
-st.sidebar.write(f"👤 Logged in as: **{st.session_state.user_name}**")
-st.sidebar.write(f"📊 Target column: **{st.session_state.target_column}**")
+# Sidebar display for user status & legend
+st.sidebar.write(f"Zalogowano jako: **{st.session_state.user_name}**")
+st.sidebar.write(f"Przypisana kolumna: **{st.session_state.target_column}**")
+
 if st.sidebar.button("Log Out"):
     del st.session_state.user_name
     if 'my_batch' in st.session_state:
         del st.session_state.my_batch
     st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("###Legenda ocen")
+st.sidebar.markdown(
+    """
+    * **Zgodne z definicją**: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
+    * **Niezgodne z definicją**: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
+    * **Niewystarczający kontekst**: Komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
+    * **Trudno powiedzieć**: Wybierz wtedy, gdy ma **wątpliwości** i nie jest pewien/a, czy słowo jest użyte zgodnie z definicją.
+    """
+)
 
 
 # --- BATCH RESERVATION FUNCTION (OPTIMIZED FOR SPEED) ---
@@ -98,7 +117,7 @@ def reserve_batch(batch_size=20):
 
 # --- BATCH INITIALIZATION FOR SESSION ---
 if 'my_batch' not in st.session_state:
-    with st.spinner("Reserving a new batch of examples from Google Sheets..."):
+    with st.spinner("Rezerwuje nową porcję przykładów z bazy..."):
         st.session_state.my_batch = reserve_batch(batch_size=20)
         st.session_state.current_in_batch = 0
         st.session_state.round_finished = False
@@ -141,16 +160,16 @@ unannotated_in_batch = st.session_state.my_batch[
 ]
 
 if st.session_state.my_batch.empty:
-    st.success(f"🎉 No more available examples to annotate for column `{target_col}`!")
+    st.success(f"Wolne! Nie ma więcej przykładów do zakodowania w kolumnie: `{target_col}`!")
     st.balloons()
 
 elif st.session_state.round_finished or unannotated_in_batch.empty:
-    st.warning("⏱️ Round completed (20 examples)!")
-    st.write("Would you like to fetch and reserve the next batch?")
+    st.warning("Runda zakończona! Zakodowano 20 przykładów.")
+    st.write("Chcesz jeszcze raz??")
 
     col_continue, col_stop = st.columns(2)
     with col_continue:
-        if st.button("🚀 Start Next Round", use_container_width=True):
+        if st.button("Zacznij nową rundę!", use_container_width=True):
             with st.spinner("Fetching new batch..."):
                 st.session_state.my_batch = reserve_batch(batch_size=20)
                 st.session_state.current_in_batch = 0
@@ -158,40 +177,40 @@ elif st.session_state.round_finished or unannotated_in_batch.empty:
             st.rerun()
 
     with col_stop:
-        if st.button("🛑 Stop for Today", use_container_width=True):
-            st.info("Your progress has been safely saved. You can close the browser.")
+        if st.button("Koniec na dziś", use_container_width=True):
+            st.info("Twoje odpowiedzi zostały bezpiecznie zapisane. Możesz zamknąć przeglądarkę.")
 
 else:
-    st.write(f"📊 Progress in current batch: **{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
+    st.write(f"Postęp w obecnej partii: **{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
 
     current_row = unannotated_in_batch.iloc[0]
     actual_index = current_row.name
 
-    st.subheader(f"Word: `{current_row['word']}`")
+    st.subheader(f"Słowo: `{current_row['word']}`")
 
-    with st.expander("📖 Definition (Miejski.pl)", expanded=True):
+    with st.expander("Definicja", expanded=True):
         st.write(current_row['definition'])
 
-    st.markdown("### Comment (Wykop.pl):")
+    st.markdown("### Komentarz:")
     st.info(f"\"{current_row['comment']}\"")
 
     st.markdown("---")
-    st.markdown("### Select Rating:")
+    st.markdown("### Wybierz ocenę")
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        if st.button("✅ 1. Consistent", use_container_width=True):
+        if st.button("Zgodne z definicją", use_container_width=True):
             save_annotation(actual_index, 1)
 
     with col2:
-        if st.button("❌ 0. Inconsistent", use_container_width=True):
+        if st.button("Niezgodne z definicją", use_container_width=True):
             save_annotation(actual_index, 0)
 
     with col3:
-        if st.button("❓ K. Insufficient Context", use_container_width=True):
+        if st.button("Niewystarczający kontekst", use_container_width=True):
             save_annotation(actual_index, "K")
 
     with col4:
-        if st.button("🤔 N. Uncertain", use_container_width=True):
+        if st.button("Trudno powiedzieć", use_container_width=True):
             save_annotation(actual_index, "N")
