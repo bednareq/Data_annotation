@@ -31,13 +31,14 @@ if 'user_name' not in st.session_state:
         ### Instrukcja i zadanie
         Twoim zadaniem jest określenie, czy wskazane słowo zostało użyte w widocznym na ekranie komentarzu zgodnie z **podaną** definicją.
 
-        > **Ważne:** W trakcie oceny bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
+        ### Ważne
+        W trakcie oceny bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
         """
     )
     
     st.markdown("---")
     st.subheader("Wprowadź nazwę użytkownika")
-    st.info("Podany identyfikator jest wykorzystywany wyłącznie na potrzeby bieżącej sesji w celu uniknięcia dublowania przykładów")
+    st.write("Podany identyfikator jest wykorzystywany wyłącznie na potrzeby bieżącej sesji w celu uniknięcia dublowania przykładów")
 
     user_input = st.text_input("Nazwa użytkownika (np. imię):").strip().lower()
     
