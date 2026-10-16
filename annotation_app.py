@@ -27,7 +27,7 @@ st.title("🏷️ Data Annotation Tool")
 
 if 'user_name' not in st.session_state:
     st.subheader("Enter your username to begin")
-    user_input = st.text_input("Username (e.g., bednarek, janowski, or your name):").strip().lower()
+    user_input = st.text_input("Username (e.g. your name):").strip().lower()
     
     if st.button("Log In", type="primary"):
         if user_input:
