@@ -25,16 +25,6 @@ def get_sheet():
 # --- USER AUTHENTICATION / LOGIN ---
 st.title("Slang czy nie slang? Oto jest pytanie")
 
-st.markdown(
-    """
-    ### Zadanie
-    Twoim zadaniem jest określenie czy wskazane słowo zostało użyte zgodnie z **podaną** definicją w widocznym na ekranie komentarzu.
-
-    ### Uwaga
-    W trakcie oceny szczególnie ważne jest, byś brał/a pod uwagę **podaną** definicję słowa, nawet jeśli się z nią osobiście nie zgadzasz.
-    """
-)
-
 if 'user_name' not in st.session_state:
     st.subheader("Wprowadź nazwę użytkownika:")
     user_input = st.text_input("Nazwa użytkownika (np. imię):").strip().lower()
@@ -51,6 +41,15 @@ if 'user_name' not in st.session_state:
         else:
             st.warning("Please enter a username.")
     st.stop()
+
+# --- INSTRUCTION SECTION (CONDENSED) ---
+with st.expander("Instrukcja do zadania", expanded=False):
+    st.markdown(
+        """
+        **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
+        **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
+        """
+    )
 
 # Sidebar display for user status & legend
 st.sidebar.write(f"Zalogowano jako: **{st.session_state.user_name}**")
@@ -69,7 +68,7 @@ st.sidebar.markdown(
     * **Zgodne z definicją**: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
     * **Niezgodne z definicją**: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
     * **Niewystarczający kontekst**: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
-    * **Nie wiem**: Wybierz wtedy, gdy ma **wątpliwości** i nie jest pewien/a, czy słowo jest użyte zgodnie z definicją.
+    * **Nie wiem**: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
     """
 )
 
@@ -120,7 +119,7 @@ def reserve_batch(batch_size=20):
 
 # --- BATCH INITIALIZATION FOR SESSION ---
 if 'my_batch' not in st.session_state:
-    with st.spinner("Rezerwuje nową porcję przykładów z bazy..."):
+    with st.spinner("Rezerwuję nową porcję przykładów z bazy..."):
         st.session_state.my_batch = reserve_batch(batch_size=20)
         st.session_state.current_in_batch = 0
         st.session_state.round_finished = False
@@ -173,7 +172,7 @@ elif st.session_state.round_finished or unannotated_in_batch.empty:
     col_continue, col_stop = st.columns(2)
     with col_continue:
         if st.button("Zacznij nową rundę!", use_container_width=True):
-            with st.spinner("Szukam nowej parti..."):
+            with st.spinner("Szukam nowej partii..."):
                 st.session_state.my_batch = reserve_batch(batch_size=20)
                 st.session_state.current_in_batch = 0
                 st.session_state.round_finished = False
@@ -184,21 +183,18 @@ elif st.session_state.round_finished or unannotated_in_batch.empty:
             st.info("Twoje odpowiedzi zostały bezpiecznie zapisane. Możesz zamknąć przeglądarkę.")
 
 else:
-    st.markdown(
-        """
-        #### Postęp w obecnej partii
-        """
-    )
-    st.write(f"**{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
+    st.write(f"Postęp w obecnej partii: **{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
 
     current_row = unannotated_in_batch.iloc[0]
     actual_index = current_row.name
 
+    # --- SEKCJA PRZYKŁADU (SUBHEADERY) ---
     st.subheader(f"Słowo: `{current_row['word']}`")
+    
+    st.subheader("Definicja:")
+    st.write(f"{current_row['definition']}")
 
-    st.subheader(f"Definicja: current_row['definition']")
-
-    st.markdown("### Komentarz:")
+    st.subheader("Komentarz:")
     st.info(f"{current_row['comment']}")
 
     st.markdown("---")
