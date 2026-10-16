@@ -63,13 +63,13 @@ if st.sidebar.button("Log Out"):
     st.rerun()
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("###Legenda ocen")
+st.sidebar.markdown("### Legenda ocen")
 st.sidebar.markdown(
     """
     * **Zgodne z definicją**: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
     * **Niezgodne z definicją**: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
-    * **Niewystarczający kontekst**: Komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
-    * **Trudno powiedzieć**: Wybierz wtedy, gdy ma **wątpliwości** i nie jest pewien/a, czy słowo jest użyte zgodnie z definicją.
+    * **Niewystarczający kontekst**: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
+    * **Nie wiem**: Wybierz wtedy, gdy ma **wątpliwości** i nie jest pewien/a, czy słowo jest użyte zgodnie z definicją.
     """
 )
 
@@ -173,7 +173,7 @@ elif st.session_state.round_finished or unannotated_in_batch.empty:
     col_continue, col_stop = st.columns(2)
     with col_continue:
         if st.button("Zacznij nową rundę!", use_container_width=True):
-            with st.spinner("Fetching new batch..."):
+            with st.spinner("Szukam nowej parti..."):
                 st.session_state.my_batch = reserve_batch(batch_size=20)
                 st.session_state.current_in_batch = 0
                 st.session_state.round_finished = False
@@ -184,7 +184,12 @@ elif st.session_state.round_finished or unannotated_in_batch.empty:
             st.info("Twoje odpowiedzi zostały bezpiecznie zapisane. Możesz zamknąć przeglądarkę.")
 
 else:
-    st.write(f"Postęp w obecnej partii: **{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
+    st.markdown(
+        """
+        ### Postęp w obecnej partii
+        """
+    )
+    st.write(f"**{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
 
     current_row = unannotated_in_batch.iloc[0]
     actual_index = current_row.name
@@ -195,7 +200,7 @@ else:
         st.write(current_row['definition'])
 
     st.markdown("### Komentarz:")
-    st.info(f"\"{current_row['comment']}\"")
+    st.info(f"{current_row['comment']}")
 
     st.markdown("---")
     st.markdown("### Wybierz ocenę")
@@ -211,9 +216,9 @@ else:
             save_annotation(actual_index, 0)
 
     with col3:
-        if st.button("Niewystarczający kontekst", use_container_width=True):
+        if st.button("Brak kontekstu", use_container_width=True):
             save_annotation(actual_index, "K")
 
     with col4:
-        if st.button("Trudno powiedzieć", use_container_width=True):
+        if st.button("Nie wiem", use_container_width=True):
             save_annotation(actual_index, "N")
