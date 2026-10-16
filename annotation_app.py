@@ -24,7 +24,7 @@ def get_sheet():
 
 # --- USER AUTHENTICATION / LOGIN ---
 st.title("Slang czy nie slang?")
-st.subtitle("Oto jest pytanie")
+st.markown("""## Oto jest pytanie""")
 
 st.markdown(
     """
