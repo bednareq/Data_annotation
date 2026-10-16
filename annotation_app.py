@@ -79,10 +79,10 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### Legenda ocen")
 st.sidebar.markdown(
     """
-    * **Zgodne z definicją**: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
-    * **Niezgodne z definicją**: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
-    * **Niewystarczający kontekst**: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
-    * **Nie wiem**: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
+    * `Zgodne z definicją`: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
+    * `Niezgodne z definicją`: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
+    * `Brak kontekstu`: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
+    * `Nie wiem`: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
     """
 )
 
