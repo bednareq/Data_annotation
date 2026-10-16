@@ -57,7 +57,7 @@ if 'user_name' not in st.session_state:
 
 
 # --- INSTRUCTION SECTION (FOR LOGGED-IN USERS) ---
-with st.expander("📖 Skrócona instrukcja do zadania", expanded=False):
+with st.expander("Instrukcja do zadania", expanded=True):
     st.markdown(
         """
         **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
