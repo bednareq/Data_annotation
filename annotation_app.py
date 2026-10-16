@@ -176,12 +176,11 @@ unannotated_in_batch = st.session_state.my_batch[
 ]
 
 if st.session_state.my_batch.empty:
-    st.success(f"Wolne! Nie ma więcej przykładów do zakodowania w kolumnie: `{target_col}`!")
-    st.balloons()
+    st.success(f"Wolne! Nie ma więcej przykładów do zakodowania w kolumnie: {target_col}")
 
 elif st.session_state.round_finished or unannotated_in_batch.empty:
     st.warning("Runda zakończona! Zakodowano 20 przykładów.")
-    st.write("Chcesz jeszcze raz??")
+    st.write("Chcesz jeszcze raz?")
 
     col_continue, col_stop = st.columns(2)
     with col_continue:
@@ -203,13 +202,14 @@ else:
     actual_index = current_row.name
 
     # --- SEKCJA PRZYKŁADU (SUBHEADERY) ---
-    st.subheader(f"Słowo: `{current_row['word']}`")
+    st.subheader(f"Słowo: {current_row['word']}")
     
     st.subheader("Definicja:")
     st.write(f"{current_row['definition']}")
 
     st.subheader("Komentarz:")
-    st.info(f"{current_row['comment']}")
+    with st.container(border=True):
+        st.write(f"{current_row['comment']}")
 
     st.markdown("---")
     st.markdown("### Wybierz ocenę")
