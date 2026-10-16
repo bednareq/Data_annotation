@@ -23,12 +23,16 @@ def get_sheet():
 
 
 # --- USER AUTHENTICATION / LOGIN ---
-st.title("Slang czy nie slang? Oto jest pytanie")
+st.title("Slang czy nie slang?")
+st.subtitle("Oto jest pytanie")
 
 st.markdown(
     """
+    ## Zadanie
     Twoim zadaniem jest określenie czy podane słowo zostało użyte zgodnie z podaną definicją w wylosowanym komentarzu.
-    W trakcie oceny ważne jest, byś brał/a pod uwagę **podaną** definicję słowa, nawet jeśli się z nią osobiście nie zgadzasz.
+
+    ## Uwaga
+    W trakcie oceny szczególnie ważne jest, byś brał/a pod uwagę **podaną** definicję słowa, nawet jeśli się z nią osobiście nie zgadzasz.
     """
 )
 
