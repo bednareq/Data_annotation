@@ -196,7 +196,7 @@ else:
 
     st.subheader(f"Słowo: `{current_row['word']}`")
 
-    st.subheader(f"Definicja: current_row['definition']"):
+    st.subheader(f"Definicja: current_row['definition']")
 
     st.markdown("### Komentarz:")
     st.info(f"{current_row['comment']}")
