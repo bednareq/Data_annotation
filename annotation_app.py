@@ -202,7 +202,8 @@ else:
     actual_index = current_row.name
 
     # --- SEKCJA PRZYKŁADU (SUBHEADERY) ---
-    st.subheader(f"Słowo: {current_row['word']}")
+    st.subheader(f"Słowo:")
+    st.write(current_row['word'])
     
     st.subheader("Definicja:")
     st.write(f"{current_row['definition']}")
