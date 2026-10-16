@@ -12,7 +12,6 @@ def get_gspread_client():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
-    # Read service account credentials from st.secrets
     creds_dict = dict(st.secrets["gcp_service_account"])
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
@@ -22,11 +21,11 @@ def get_sheet():
     return client.open(SPREADSHEET_NAME).sheet1
 
 
-# --- AUTOMATIC CLEANUP FUNCTION ---
+# --- AUTOMATIC CLEANUP FUNCTION (OPTIMIZED) ---
 def cleanup_stale_reservations():
     """
-    Clears 'reserved_by' for rows that have been reserved but contain no annotations
-    in any of the coder columns (coder1, bednarek, janowski).
+    Czyszczenie kolumny 'reserved_by' wyłącznie dla wierszy,
+    które nie zostały jeszcze ocenione w kolumnie 'coder1'.
     """
     sheet = get_sheet()
     records = sheet.get_all_records()
@@ -34,33 +33,28 @@ def cleanup_stale_reservations():
         return
 
     df = pd.DataFrame(records)
-    
-    # Ensure all relevant columns exist
-    for col in ['bednarek', 'janowski', 'coder1', 'reserved_by']:
+
+    for col in ['coder1', 'reserved_by']:
         if col not in df.columns:
             df[col] = ''
         df[col] = df[col].astype(str)
 
-    # Condition: reserved_by is NOT empty AND all evaluation columns ARE empty
+    # Szukamy rezerwacji bez wpisu w coder1
     stale_mask = (
-        (~df['reserved_by'].isna() & (df['reserved_by'] != '') & (df['reserved_by'] != 'None')) &
-        (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None')) &
-        (df['bednarek'].isna() | (df['bednarek'] == '') | (df['bednarek'] == 'None')) &
-        (df['janowski'].isna() | (df['janowski'] == '') | (df['janowski'] == 'None'))
+        (~df['reserved_by'].isna()) & (df['reserved_by'] != '') & (df['reserved_by'] != 'None') &
+        (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None'))
     )
 
     stale_indices = df[stale_mask].index.tolist()
 
     if stale_indices:
         reserved_col_idx = df.columns.get_loc('reserved_by') + 1
-        cells_to_clear = []
         
-        for idx in stale_indices:
-            sheet_row_num = idx + 2  # +2 offset for 1-based indexing and header row
-            cell = sheet.cell(sheet_row_num, reserved_col_idx)
-            cell.value = ''
-            cells_to_clear.append(cell)
-
+        # Szybka aktualizacja zbiorcza bez wywoływania sheet.cell() w pętli
+        cells_to_clear = [
+            gspread.Cell(row=idx + 2, col=reserved_col_idx, value='') 
+            for idx in stale_indices
+        ]
         sheet.update_cells(cells_to_clear)
 
 
@@ -87,11 +81,12 @@ if 'user_name' not in st.session_state:
     if st.button("Zaloguj się", type="primary"):
         if user_input:
             st.session_state.user_name = user_input
-            # Route target column based on username
             if user_input in ['bednarek', 'janowski']:
                 st.session_state.target_column = user_input
+                st.session_state.is_dedicated_coder = True
             else:
                 st.session_state.target_column = 'coder1'
+                st.session_state.is_dedicated_coder = False
             st.rerun()
         else:
             st.warning("Proszę wprowadzić nazwę użytkownika.")
@@ -112,10 +107,13 @@ st.sidebar.write(f"Zalogowano jako: **{st.session_state.user_name}**")
 st.sidebar.write(f"Przypisana kolumna: **{st.session_state.target_column}**")
 
 if st.sidebar.button("Wyloguj się"):
-    cleanup_stale_reservations()
-    del st.session_state.user_name
-    if 'my_batch' in st.session_state:
-        del st.session_state.my_batch
+    # Automatyczne zwalnianie rezerwacji przy wylogowaniu
+    if not st.session_state.get('is_dedicated_coder', False):
+        cleanup_stale_reservations()
+    
+    for key in ['user_name', 'target_column', 'is_dedicated_coder', 'my_batch', 'current_in_batch', 'round_finished']:
+        if key in st.session_state:
+            del st.session_state[key]
     st.rerun()
 
 st.sidebar.markdown("---")
@@ -130,29 +128,40 @@ st.sidebar.markdown(
 )
 
 
-# --- BATCH RESERVATION FUNCTION (OPTIMIZED FOR SPEED) ---
+# --- BATCH RESERVATION FUNCTION ---
 def reserve_batch(batch_size=20):
-    # Perform automated cleanup before assigning new batches
-    cleanup_stale_reservations()
+    target_col = st.session_state.target_column
+    is_dedicated = st.session_state.is_dedicated_coder
+
+    # Jeśli loguje się zwykły koder (coder1), czyścimy nieaktywne rezerwacje
+    if not is_dedicated:
+        cleanup_stale_reservations()
 
     sheet = get_sheet()
     records = sheet.get_all_records()
+    if not records:
+        return pd.DataFrame()
+
     df = pd.DataFrame(records)
 
-    target_col = st.session_state.target_column
-
-    # Ensure required tracking columns exist in the DataFrame
     for col in ['bednarek', 'janowski', 'coder1', 'reserved_by']:
         if col not in df.columns:
             df[col] = ''
         df[col] = df[col].astype(str)
 
-    # Filter rows that are unannotated for the target column AND not currently reserved
-    free_mask = (
-        (df[target_col].isna() | (df[target_col] == '') | (df[target_col] == 'None')) &
-        (df['reserved_by'].isna() | (df['reserved_by'] == '') | (df['reserved_by'] == 'None'))
-    )
-    
+    # LOGIKA WORKFLOW:
+    if is_dedicated:
+        # 1 & 2: Dedykowani adnotatorzy (bednarek, janowski) dostają przykłady bez oceny w swojej kolumnie
+        # Niezależnie od stanu 'reserved_by' (rezerwacje dotyczą tylko kolumny coder1)
+        free_mask = (df[target_col].isna() | (df[target_col] == '') | (df[target_col] == 'None'))
+    else:
+        # 3: Pozostali użytkownicy adnotują kolumnę 'coder1'.
+        # Musi nie być oceny w 'coder1' ORAZ brak rezerwacji przez kogoś innego
+        free_mask = (
+            (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None')) &
+            (df['reserved_by'].isna() | (df['reserved_by'] == '') | (df['reserved_by'] == 'None'))
+        )
+
     free_indices = df[free_mask].index.tolist()
 
     if not free_indices:
@@ -160,48 +169,55 @@ def reserve_batch(batch_size=20):
 
     selected_indices = free_indices[:batch_size]
 
-    # OPTIMIZATION: Perform a single batch update to reserve cells instead of looping HTTP calls
-    reserved_col_idx = df.columns.get_loc('reserved_by') + 1
-    cells_to_update = []
-    
-    for idx in selected_indices:
-        sheet_row_num = idx + 2  # +2 offset for 1-based indexing and header row in GSheets
-        cell = sheet.cell(sheet_row_num, reserved_col_idx)
-        cell.value = st.session_state.user_name
-        cells_to_update.append(cell)
-        
-    sheet.update_cells(cells_to_update)
+    # Rezerwacja 'reserved_by' ma miejsce TYLKO dla zwykłych koderów (coder1)
+    if not is_dedicated:
+        reserved_col_idx = df.columns.get_loc('reserved_by') + 1
+        cells_to_update = [
+            gspread.Cell(row=idx + 2, col=reserved_col_idx, value=st.session_state.user_name)
+            for idx in selected_indices
+        ]
+        sheet.update_cells(cells_to_update)
 
     reserved_df = df.loc[selected_indices].copy()
-    reserved_df['reserved_by'] = st.session_state.user_name
     return reserved_df
 
 
 # --- BATCH INITIALIZATION FOR SESSION ---
 if 'my_batch' not in st.session_state:
-    with st.spinner("Rezerwuję nową porcję przykładów z bazy..."):
+    with st.spinner("Pobieram nową porcję przykładów z bazy..."):
         st.session_state.my_batch = reserve_batch(batch_size=20)
         st.session_state.current_in_batch = 0
         st.session_state.round_finished = False
 
+
 # --- SAVE ANNOTATION FUNCTION ---
 def save_annotation(row_index, value):
     sheet = get_sheet()
-    
-    # 1. Update target cell in Google Sheets
-    sheet_row_num = row_index + 2
     records = sheet.get_all_records()
-    df_cols = list(records[0].keys()) if records else []
-    
-    target_col_idx = df_cols.index(st.session_state.target_column) + 1
-    sheet.update_cell(sheet_row_num, target_col_idx, str(value))
+    if not records:
+        return
 
-    # 2. Clear reservation flag upon completion
-    reserved_col_idx = df_cols.index('reserved_by') + 1
-    sheet.update_cell(sheet_row_num, reserved_col_idx, '')
+    df_cols = list(records[0].keys())
+    sheet_row_num = row_index + 2  # +2 ze względu na nagłówek i indeksowanie 1-based
 
-    # 3. Update local session state
     target_col = st.session_state.target_column
+    target_col_idx = df_cols.index(target_col) + 1
+
+    cells_to_update = [
+        gspread.Cell(row=sheet_row_num, col=target_col_idx, value=str(value))
+    ]
+
+    # Zwalniamy flaga rezerwacji tylko dla zwykłych użytkowników (coder1)
+    if not st.session_state.is_dedicated_coder and 'reserved_by' in df_cols:
+        reserved_col_idx = df_cols.index('reserved_by') + 1
+        cells_to_update.append(
+            gspread.Cell(row=sheet_row_num, col=reserved_col_idx, value='')
+        )
+
+    # Wysłanie zmian w jednej operacji zbiorczej
+    sheet.update_cells(cells_to_update)
+
+    # Aktualizacja lokalnego stanu
     st.session_state.my_batch.loc[row_index, target_col] = str(value)
     st.session_state.current_in_batch += 1
 
@@ -214,67 +230,67 @@ def save_annotation(row_index, value):
 # --- ANNOTATOR USER INTERFACE ---
 target_col = st.session_state.target_column
 
-# Filter out examples that are already annotated in the current batch
-unannotated_in_batch = st.session_state.my_batch[
-    st.session_state.my_batch[target_col].isna() | 
-    (st.session_state.my_batch[target_col] == '') | 
-    (st.session_state.my_batch[target_col] == 'None')
-]
-
 if st.session_state.my_batch.empty:
-    st.success(f"Wolne! Nie ma więcej przykładów do zakodowania w kolumnie: {target_col}")
-
-elif st.session_state.round_finished or unannotated_in_batch.empty:
-    st.warning("Runda zakończona! Zakodowano 20 przykładów.")
-    st.write("Chcesz jeszcze raz?")
-
-    col_continue, col_stop = st.columns(2)
-    with col_continue:
-        if st.button("Zacznij nową rundę!", use_container_width=True):
-            with st.spinner("Szukam nowej partii..."):
-                st.session_state.my_batch = reserve_batch(batch_size=20)
-                st.session_state.current_in_batch = 0
-                st.session_state.round_finished = False
-            st.rerun()
-
-    with col_stop:
-        if st.button("Koniec na dziś", use_container_width=True):
-            st.info("Twoje odpowiedzi zostały bezpiecznie zapisane. Możesz zamknąć przeglądarkę.")
+    st.success(f"Brak więcej przykładów do zakodowania w kolumnie: **{target_col}**")
 
 else:
-    st.write(f"Postęp w obecnej partii: **{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
+    unannotated_in_batch = st.session_state.my_batch[
+        st.session_state.my_batch[target_col].isna() | 
+        (st.session_state.my_batch[target_col] == '') | 
+        (st.session_state.my_batch[target_col] == 'None')
+    ]
 
-    current_row = unannotated_in_batch.iloc[0]
-    actual_index = current_row.name
+    if st.session_state.round_finished or unannotated_in_batch.empty:
+        st.warning("Runda zakończona! Zakodowano porcję przykładów.")
+        st.write("Chcesz kontynuować?")
 
-    # --- SEKCJA PRZYKŁADU (SUBHEADERY) ---
-    st.subheader("Słowo:")
-    st.write(current_row['word'])
-    
-    st.subheader("Definicja:")
-    st.write(f"{current_row['definition']}")
+        col_continue, col_stop = st.columns(2)
+        with col_continue:
+            if st.button("Zacznij nową rundę!", use_container_width=True):
+                with st.spinner("Szukam nowej partii..."):
+                    st.session_state.my_batch = reserve_batch(batch_size=20)
+                    st.session_state.current_in_batch = 0
+                    st.session_state.round_finished = False
+                st.rerun()
 
-    st.subheader("Komentarz:")
-    with st.container(border=True):
-        st.write(f"{current_row['comment']}")
+        with col_stop:
+            if st.button("Koniec na dziś", use_container_width=True):
+                st.info("Twoje odpowiedzi zostały bezpiecznie zapisane. Możesz zamknąć przeglądarkę.")
 
-    st.markdown("---")
-    st.markdown("### Wybierz ocenę")
+    else:
+        st.write(f"Postęp w obecnej partii: **{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
 
-    col1, col2, col3, col4 = st.columns(4)
+        current_row = unannotated_in_batch.iloc[0]
+        actual_index = current_row.name
 
-    with col1:
-        if st.button("Zgodne z definicją", use_container_width=True):
-            save_annotation(actual_index, 1)
+        # --- SEKCJA PRZYKŁADU ---
+        st.subheader("Słowo:")
+        st.write(current_row.get('word', ''))
+        
+        st.subheader("Definicja:")
+        st.write(f"{current_row.get('definition', '')}")
 
-    with col2:
-        if st.button("Niezgodne z definicją", use_container_width=True):
-            save_annotation(actual_index, 0)
+        st.subheader("Komentarz:")
+        with st.container(border=True):
+            st.write(f"{current_row.get('comment', '')}")
 
-    with col3:
-        if st.button("Brak kontekstu", use_container_width=True):
-            save_annotation(actual_index, "K")
+        st.markdown("---")
+        st.markdown("### Wybierz ocenę")
 
-    with col4:
-        if st.button("Nie wiem", use_container_width=True):
-            save_annotation(actual_index, "N")
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            if st.button("Zgodne z definicją", use_container_width=True):
+                save_annotation(actual_index, 1)
+
+        with col2:
+            if st.button("Niezgodne z definicją", use_container_width=True):
+                save_annotation(actual_index, 0)
+
+        with col3:
+            if st.button("Brak kontekstu", use_container_width=True):
+                save_annotation(actual_index, "K")
+
+        with col4:
+            if st.button("Nie wiem", use_container_width=True):
+                save_annotation(actual_index, "N")
