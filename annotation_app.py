@@ -22,6 +22,48 @@ def get_sheet():
     return client.open(SPREADSHEET_NAME).sheet1
 
 
+# --- AUTOMATIC CLEANUP FUNCTION ---
+def cleanup_stale_reservations():
+    """
+    Clears 'reserved_by' for rows that have been reserved but contain no annotations
+    in any of the coder columns (coder1, bednarek, janowski).
+    """
+    sheet = get_sheet()
+    records = sheet.get_all_records()
+    if not records:
+        return
+
+    df = pd.DataFrame(records)
+    
+    # Ensure all relevant columns exist
+    for col in ['bednarek', 'janowski', 'coder1', 'reserved_by']:
+        if col not in df.columns:
+            df[col] = ''
+        df[col] = df[col].astype(str)
+
+    # Condition: reserved_by is NOT empty AND all evaluation columns ARE empty
+    stale_mask = (
+        (~df['reserved_by'].isna() & (df['reserved_by'] != '') & (df['reserved_by'] != 'None')) &
+        (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None')) &
+        (df['bednarek'].isna() | (df['bednarek'] == '') | (df['bednarek'] == 'None')) &
+        (df['janowski'].isna() | (df['janowski'] == '') | (df['janowski'] == 'None'))
+    )
+
+    stale_indices = df[stale_mask].index.tolist()
+
+    if stale_indices:
+        reserved_col_idx = df.columns.get_loc('reserved_by') + 1
+        cells_to_clear = []
+        
+        for idx in stale_indices:
+            sheet_row_num = idx + 2  # +2 offset for 1-based indexing and header row
+            cell = sheet.cell(sheet_row_num, reserved_col_idx)
+            cell.value = ''
+            cells_to_clear.append(cell)
+
+        sheet.update_cells(cells_to_clear)
+
+
 # --- USER AUTHENTICATION / FIRST SCREEN ---
 st.title("Slang czy nie slang? Oto jest pytanie")
 
@@ -70,6 +112,7 @@ st.sidebar.write(f"Zalogowano jako: **{st.session_state.user_name}**")
 st.sidebar.write(f"Przypisana kolumna: **{st.session_state.target_column}**")
 
 if st.sidebar.button("Wyloguj się"):
+    cleanup_stale_reservations()
     del st.session_state.user_name
     if 'my_batch' in st.session_state:
         del st.session_state.my_batch
@@ -89,6 +132,9 @@ st.sidebar.markdown(
 
 # --- BATCH RESERVATION FUNCTION (OPTIMIZED FOR SPEED) ---
 def reserve_batch(batch_size=20):
+    # Perform automated cleanup before assigning new batches
+    cleanup_stale_reservations()
+
     sheet = get_sheet()
     records = sheet.get_all_records()
     df = pd.DataFrame(records)
@@ -202,7 +248,7 @@ else:
     actual_index = current_row.name
 
     # --- SEKCJA PRZYKŁADU (SUBHEADERY) ---
-    st.subheader(f"Słowo:")
+    st.subheader("Słowo:")
     st.write(current_row['word'])
     
     st.subheader("Definicja:")
