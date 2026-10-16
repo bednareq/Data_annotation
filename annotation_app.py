@@ -23,8 +23,7 @@ def get_sheet():
 
 
 # --- USER AUTHENTICATION / LOGIN ---
-st.title("Slang czy nie slang?")
-st.markown("""## Oto jest pytanie""")
+st.title("Slang czy nie slang? Oto jest pytanie")
 
 st.markdown(
     """
