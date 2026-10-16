@@ -186,7 +186,7 @@ elif st.session_state.round_finished or unannotated_in_batch.empty:
 else:
     st.markdown(
         """
-        ### Postęp w obecnej partii
+        #### Postęp w obecnej partii
         """
     )
     st.write(f"**{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
@@ -196,8 +196,7 @@ else:
 
     st.subheader(f"Słowo: `{current_row['word']}`")
 
-    with st.expander("Definicja", expanded=True):
-        st.write(current_row['definition'])
+    st.subheader(f"Definicja: current_row['definition']"):
 
     st.markdown("### Komentarz:")
     st.info(f"{current_row['comment']}")
