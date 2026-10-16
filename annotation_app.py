@@ -99,7 +99,6 @@ with st.expander("Instrukcja do zadania", expanded=True):
         """
         **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
         **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
-        **Wylogowanie**: Po zakończeniu zadania lub jeśli nie chcesz już kontynuować, kliknij przycisk **Wyloguj się** w panelu bocznym.
         """
     )
 
@@ -129,7 +128,7 @@ st.sidebar.markdown(
 )
 
 
-# --- BATCH RESERVATION FUNCTION ---
+# --- BATCH RESERVATION FUNCTION (RANDOM SAMPLING) ---
 def reserve_batch(batch_size=20):
     target_col = st.session_state.target_column
     is_dedicated = st.session_state.is_dedicated_coder
@@ -152,23 +151,25 @@ def reserve_batch(batch_size=20):
 
     # LOGIKA WORKFLOW:
     if is_dedicated:
-        # 1 & 2: Dedykowani adnotatorzy (bednarek, janowski) dostają przykłady bez oceny w swojej kolumnie
-        # Niezależnie od stanu 'reserved_by' (rezerwacje dotyczą tylko kolumny coder1)
+        # 1 & 2: Dedykowani adnotatorzy (bednarek, janowski) - wiersze bez oceny w ich kolumnie
         free_mask = (df[target_col].isna() | (df[target_col] == '') | (df[target_col] == 'None'))
     else:
-        # 3: Pozostali użytkownicy adnotują kolumnę 'coder1'.
-        # Musi nie być oceny w 'coder1' ORAZ brak rezerwacji przez kogoś innego
+        # 3: Pozostali użytkownicy (coder1) - brak oceny ORAZ brak rezerwacji przez kogoś innego
         free_mask = (
             (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None')) &
             (df['reserved_by'].isna() | (df['reserved_by'] == '') | (df['reserved_by'] == 'None'))
         )
 
-    free_indices = df[free_mask].index.tolist()
+    free_df = df[free_mask]
 
-    if not free_indices:
+    if free_df.empty:
         return pd.DataFrame()
 
-    selected_indices = free_indices[:batch_size]
+    # LOSOWANIE WIERSZY:
+    # Jeśli dostępnych jest mniej przykładów niż wielkość paczki, pobieramy wszystkie dostępne
+    sample_size = min(batch_size, len(free_df))
+    reserved_df = free_df.sample(n=sample_size)
+    selected_indices = reserved_df.index.tolist()
 
     # Rezerwacja 'reserved_by' ma miejsce TYLKO dla zwykłych koderów (coder1)
     if not is_dedicated:
@@ -179,7 +180,6 @@ def reserve_batch(batch_size=20):
         ]
         sheet.update_cells(cells_to_update)
 
-    reserved_df = df.loc[selected_indices].copy()
     return reserved_df
 
 
@@ -208,7 +208,7 @@ def save_annotation(row_index, value):
         gspread.Cell(row=sheet_row_num, col=target_col_idx, value=str(value))
     ]
 
-    # Zwalniamy flaga rezerwacji tylko dla zwykłych użytkowników (coder1)
+    # Zwalniamy flagę rezerwacji tylko dla zwykłych użytkowników (coder1)
     if not st.session_state.is_dedicated_coder and 'reserved_by' in df_cols:
         reserved_col_idx = df_cols.index('reserved_by') + 1
         cells_to_update.append(
