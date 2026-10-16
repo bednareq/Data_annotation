@@ -22,14 +22,26 @@ def get_sheet():
     return client.open(SPREADSHEET_NAME).sheet1
 
 
-# --- USER AUTHENTICATION / LOGIN ---
+# --- USER AUTHENTICATION / FIRST SCREEN ---
 st.title("Slang czy nie slang? Oto jest pytanie")
 
 if 'user_name' not in st.session_state:
-    st.subheader("Wprowadź nazwę użytkownika:")
+    st.markdown(
+        """
+        ### Instrukcja i zadanie
+        Twoim zadaniem jest określenie, czy wskazane słowo zostało użyte w widocznym na ekranie komentarzu zgodnie z **podaną** definicją.
+
+        > **Ważne:** W trakcie oceny bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
+        """
+    )
+    
+    st.markdown("---")
+    st.subheader("Wprowadź nazwę użytkownika")
+    st.info("Podany identyfikator jest wykorzystywany wyłącznie na potrzeby bieżącej sesji w celu uniknięcia dublowania przykładów")
+
     user_input = st.text_input("Nazwa użytkownika (np. imię):").strip().lower()
     
-    if st.button("Log In", type="primary"):
+    if st.button("Zaloguj się", type="primary"):
         if user_input:
             st.session_state.user_name = user_input
             # Route target column based on username
@@ -39,11 +51,12 @@ if 'user_name' not in st.session_state:
                 st.session_state.target_column = 'coder1'
             st.rerun()
         else:
-            st.warning("Please enter a username.")
+            st.warning("Proszę wprowadzić nazwę użytkownika.")
     st.stop()
 
-# --- INSTRUCTION SECTION (CONDENSED) ---
-with st.expander("Instrukcja do zadania", expanded=False):
+
+# --- INSTRUCTION SECTION (FOR LOGGED-IN USERS) ---
+with st.expander("📖 Skrócona instrukcja do zadania", expanded=False):
     st.markdown(
         """
         **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
@@ -55,7 +68,7 @@ with st.expander("Instrukcja do zadania", expanded=False):
 st.sidebar.write(f"Zalogowano jako: **{st.session_state.user_name}**")
 st.sidebar.write(f"Przypisana kolumna: **{st.session_state.target_column}**")
 
-if st.sidebar.button("Log Out"):
+if st.sidebar.button("Wyloguj się"):
     del st.session_state.user_name
     if 'my_batch' in st.session_state:
         del st.session_state.my_batch
