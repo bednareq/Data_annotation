@@ -27,17 +27,17 @@ st.title("Slang czy nie slang? Oto jest pytanie")
 
 st.markdown(
     """
-    ## Zadanie
-    Twoim zadaniem jest określenie czy podane słowo zostało użyte zgodnie z podaną definicją w wylosowanym komentarzu.
+    ### Zadanie
+    Twoim zadaniem jest określenie czy wskazane słowo zostało użyte zgodnie z **podaną** definicją w widocznym na ekranie komentarzu.
 
-    ## Uwaga
+    ### Uwaga
     W trakcie oceny szczególnie ważne jest, byś brał/a pod uwagę **podaną** definicję słowa, nawet jeśli się z nią osobiście nie zgadzasz.
     """
 )
 
 if 'user_name' not in st.session_state:
-    st.subheader("Enter your username to begin")
-    user_input = st.text_input("Username (e.g. your name):").strip().lower()
+    st.subheader("Wprowadź nazwę użytkownika:")
+    user_input = st.text_input("Nazwa użytkownika (np. imię):").strip().lower()
     
     if st.button("Log In", type="primary"):
         if user_input:
