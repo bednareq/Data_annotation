@@ -99,6 +99,7 @@ with st.expander("Instrukcja do zadania", expanded=True):
         """
         **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
         **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
+        **Wylogowanie**: Po zakończeniu zadania lub jeśli nie chcesz już kontynuować, kliknij przycisk **Wyloguj się** w panelu bocznym.
         """
     )
 
