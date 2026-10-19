@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import gspread
 import re
+import random
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
@@ -169,20 +170,34 @@ if not st.session_state.started:
     # --- PANEL BOCZNY EKRANU 1 ---
     with st.sidebar:
         st.markdown("### Zaloguj się")
-        login_choice = st.radio(
-            "Wybierz konto:",
-            options=['Bednarek', 'Janowski'],
-            horizontal=True,
-        )
-        login_pw = st.text_input(f"Hasło dla {login_choice}:", type="password")
-        if st.button("Zaloguj", use_container_width=True, type="primary"):
-            required = PASSWORDS['bednarek'] if login_choice == 'Bednarek' else PASSWORDS['janowski']
-            if login_pw == required:
-                st.session_state.dedicated_login = 'bednarek' if login_choice == 'Bednarek' else 'janowski'
-                st.success(f"Zalogowano jako {login_choice}.")
-            else:
-                st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
-        st.markdown("Bez logowania: **Inny użytkownik** (identyfikator nadawany automatycznie).")
+        col_login_b, col_login_j = st.columns(2)
+        with col_login_b:
+            if st.button(
+                "Bednarek",
+                use_container_width=True,
+                type="primary" if st.session_state.get('selected_login') == 'Bednarek' else "secondary",
+            ):
+                st.session_state.selected_login = 'Bednarek'
+                st.rerun()
+        with col_login_j:
+            if st.button(
+                "Janowski",
+                use_container_width=True,
+                type="primary" if st.session_state.get('selected_login') == 'Janowski' else "secondary",
+            ):
+                st.session_state.selected_login = 'Janowski'
+                st.rerun()
+
+        selected_login = st.session_state.get('selected_login')
+        if selected_login:
+            login_pw = st.text_input(f"Hasło dla {selected_login}:", type="password")
+            if st.button("Zaloguj", use_container_width=True, type="primary"):
+                required = PASSWORDS['bednarek'] if selected_login == 'Bednarek' else PASSWORDS['janowski']
+                if login_pw == required:
+                    st.session_state.dedicated_login = 'bednarek' if selected_login == 'Bednarek' else 'janowski'
+                    st.success(f"Zalogowano jako {selected_login}.")
+                else:
+                    st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
 
         st.markdown("---")
         st.markdown("### Wersja aplikacji")
@@ -204,19 +219,19 @@ if not st.session_state.started:
     st.stop()
 
 # ================= EKRAN 2 =================
-# --- INSTRUKCJA (opcjonalnie, domyślnie zwinięta) ---
-with st.expander("Instrukcja do zadania", expanded=False):
-    st.markdown(
-        """
-        **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
-        **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
-        """
-    )
-
 # --- PANEL BOCZNY EKRANU 2 ---
 with st.sidebar:
     st.markdown(f"**Zalogowano jako:** {st.session_state.user_name}")
     st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
+
+    if st.button("Wyloguj się"):
+        # Automatyczne zwalnianie rezerwacji przy wylogowaniu
+        if not st.session_state.get('is_dedicated_coder', False):
+            cleanup_stale_reservations()
+        for key in ['user_name', 'target_column', 'is_dedicated_coder', 'dedicated_login', 'selected_login', 'selected_user_type', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
 
     st.markdown("---")
     st.markdown("### Wersja aplikacji")
@@ -235,14 +250,14 @@ with st.sidebar:
         st.session_state.view_mode = 'mobilna'
         st.rerun()
 
-    if st.button("Wyloguj się"):
-        # Automatyczne zwalnianie rezerwacji przy wylogowaniu
-        if not st.session_state.get('is_dedicated_coder', False):
-            cleanup_stale_reservations()
-        for key in ['user_name', 'target_column', 'is_dedicated_coder', 'dedicated_login', 'selected_user_type', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
+    st.markdown("---")
+    st.markdown("### Instrukcja do zadania")
+    st.markdown(
+        """
+        **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
+        **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
+        """
+    )
 
     st.markdown("---")
     st.markdown("### Legenda ocen")
@@ -295,7 +310,11 @@ def reserve_batch(batch_size=20):
     if not free_indices:
         return pd.DataFrame()
 
-    selected_indices = free_indices[:batch_size]
+    # LOSOWY dobór przykładów (a nie branie pierwszych 20 po kolei)
+    if len(free_indices) <= batch_size:
+        selected_indices = free_indices
+    else:
+        selected_indices = random.sample(free_indices, batch_size)
 
     # Rezerwacja 'reserved_by' ma miejsce TYLKO dla zwykłych koderów (coder1)
     if not is_dedicated:
