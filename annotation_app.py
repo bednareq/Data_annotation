@@ -14,9 +14,9 @@ PASSWORDS = {
 
 # --- WYBÓR WERSJI APLIKACJI ---
 # 'przegladarkowa'  -> standardowy układ (tak jak przed zmianami)
-# 'mobilna'         -> układ automatycznie dostosowany do wielkości ekranu
+# 'mobilna'         -> układ automatycznie dostosowany do wielkości ekranu (DOMYŚLNY)
 if 'view_mode' not in st.session_state:
-    st.session_state.view_mode = 'przegladarkowa'
+    st.session_state.view_mode = 'mobilna'
 
 # set_page_config musi być pierwszą komendą Streamlit, dlatego czytamy stan przed nią
 if st.session_state.view_mode == 'mobilna':
@@ -138,88 +138,17 @@ if 'user_name' not in st.session_state:
 
         ### Ważne
         W trakcie oceny bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
+
+        ### Logowanie
+        Domyślnie jesteś zalogowany jako **Inny użytkownik** (identyfikator nadawany automatycznie).
+        Jeśli chcesz pracować jako **Bednarek** lub **Janowski**, wybierz odpowiednią opcję w **menu bocznym** (z hasłem).
         """
     )
 
-    st.markdown("---")
-
-    # --- WYBÓR WERSJI APLIKACJI (mobilna / przeglądarkowa) ---
-    st.subheader("Wersja aplikacji")
-    col_v1, col_v2 = st.columns(2)
-    with col_v1:
-        if st.button(
-            "Przeglądarkowa",
-            use_container_width=True,
-            type="primary" if st.session_state.view_mode == 'przegladarkowa' else "secondary",
-        ):
-            st.session_state.view_mode = 'przegladarkowa'
-            st.rerun()
-    with col_v2:
-        if st.button(
-            "Mobilna",
-            use_container_width=True,
-            type="primary" if st.session_state.view_mode == 'mobilna' else "secondary",
-        ):
-            st.session_state.view_mode = 'mobilna'
-            st.rerun()
-
-    # --- LOGOWANIE (wybór użytkownika przyciskiem) ---
-    st.subheader("Logowanie")
-
-    col_b, col_j, col_i = st.columns(3)
-    with col_b:
-        if st.button(
-            "Bednarek",
-            use_container_width=True,
-            type="primary" if st.session_state.get('selected_user_type') == 'Bednarek' else "secondary",
-        ):
-            st.session_state.selected_user_type = 'Bednarek'
-            st.rerun()
-    with col_j:
-        if st.button(
-            "Janowski",
-            use_container_width=True,
-            type="primary" if st.session_state.get('selected_user_type') == 'Janowski' else "secondary",
-        ):
-            st.session_state.selected_user_type = 'Janowski'
-            st.rerun()
-    with col_i:
-        if st.button(
-            "Inny użytkownik",
-            use_container_width=True,
-            type="primary" if st.session_state.get('selected_user_type') == 'Inny' else "secondary",
-        ):
-            st.session_state.selected_user_type = 'Inny'
-            st.rerun()
-
-    st.markdown("")
-    selected_type = st.session_state.get('selected_user_type')
-
-    if selected_type in ['Bednarek', 'Janowski']:
-        password_input = st.text_input(f"Hasło dla {selected_type}:", type="password")
-        if st.button("Zaloguj się", type="primary"):
-            password_ok = (
-                (selected_type == 'Bednarek' and password_input == PASSWORDS['bednarek']) or
-                (selected_type == 'Janowski' and password_input == PASSWORDS['janowski'])
-            )
-            if password_ok:
-                user_name = 'bednarek' if selected_type == 'Bednarek' else 'janowski'
-                st.session_state.user_name = user_name
-                st.session_state.target_column = user_name
-                st.session_state.is_dedicated_coder = True
-                st.rerun()
-            else:
-                st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
-
-    elif selected_type == 'Inny':
-        if st.button("Zaloguj się", type="primary"):
-            user_name = get_next_user_id()
-            st.session_state.user_name = user_name
-            st.session_state.target_column = 'coder1'
-            st.session_state.is_dedicated_coder = False
-            st.rerun()
-
-    st.stop()
+    # Domyślny użytkownik = 'Inny użytkownik' z automatycznie numerowanym identyfikatorem
+    st.session_state.user_name = get_next_user_id()
+    st.session_state.target_column = 'coder1'
+    st.session_state.is_dedicated_coder = False
 
 
 # --- INSTRUCTION SECTION (FOR LOGGED-IN USERS) ---
@@ -232,9 +161,49 @@ with st.expander("Instrukcja do zadania", expanded=False):
         """
     )
 
+# --- LOGOWANIE DEDYKOWANYCH ADNOTATORÓW W MENU BOCZNYM (domyślnie zwinięte) ---
+with st.sidebar.expander("Zaloguj jako Bednarek / Janowski", expanded=False):
+    dedicated_user = st.radio(
+        "Wybierz użytkownika:",
+        options=['Bednarek', 'Janowski'],
+    )
+    ded_password = st.text_input(f"Hasło dla {dedicated_user}:", type="password")
+    if st.button("Start!", type="primary", use_container_width=True):
+        required = PASSWORDS['bednarek'] if dedicated_user == 'Bednarek' else PASSWORDS['janowski']
+        if ded_password == required:
+            user_name = 'bednarek' if dedicated_user == 'Bednarek' else 'janowski'
+            st.session_state.user_name = user_name
+            st.session_state.target_column = user_name
+            st.session_state.is_dedicated_coder = True
+            # Reset partii przy zmianie tożsamości
+            for k in ['selected_user_type', 'my_batch', 'current_in_batch', 'round_finished']:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
+        else:
+            st.sidebar.error("Nieprawidłowe hasło. Spróbuj ponownie.")
+
 # Sidebar display for user status & legend
 st.sidebar.write(f"Zalogowano jako: **{st.session_state.user_name}**")
 st.sidebar.write(f"Przypisana kolumna: **{st.session_state.target_column}**")
+
+# --- WYBÓR WERSJI W PANELU BOCZNYM (po zalogowaniu) ---
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Wersja aplikacji")
+if st.sidebar.button(
+    "Przeglądarkowa",
+    use_container_width=True,
+    type="primary" if st.session_state.view_mode == 'przegladarkowa' else "secondary",
+):
+    st.session_state.view_mode = 'przegladarkowa'
+    st.rerun()
+if st.sidebar.button(
+    "Mobilna",
+    use_container_width=True,
+    type="primary" if st.session_state.view_mode == 'mobilna' else "secondary",
+):
+    st.session_state.view_mode = 'mobilna'
+    st.rerun()
 
 if st.sidebar.button("Wyloguj się"):
     # Automatyczne zwalnianie rezerwacji przy wylogowaniu
@@ -406,13 +375,12 @@ else:
             unsafe_allow_html=True
         )
         st.markdown(
-            f"<div style='font-size:1.1rem;'><b>Komentarz:</b></div>",
+            f"<div style='font-size:1.1rem; margin-bottom:0.4rem;'><b>Komentarz:</b></div>",
             unsafe_allow_html=True
         )
         with st.container(border=True):
             st.write(f"{comment}")
 
-        st.markdown("---")
         st.markdown("### Wybierz ocenę")
 
         col1, col2, col3, col4 = st.columns(4)
