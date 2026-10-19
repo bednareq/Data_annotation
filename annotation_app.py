@@ -158,7 +158,7 @@ if not st.session_state.started:
         st.rerun()
 
     with st.sidebar:
-        st.markdown("### Zaloguj się")
+        st.markdown("### Panek badacza")
         col_login_b, col_login_j = st.columns(2)
         with col_login_b:
             if st.button(
