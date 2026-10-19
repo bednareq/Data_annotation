@@ -9,10 +9,10 @@ from google.oauth2.service_account import Credentials
 SPREADSHEET_NAME = "Sample_annotation"
 RESERVATION_TIMEOUT_SECONDS = 1200  # Rezerwacja wygasa po 20 minutach
 
-# --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW ---
+# --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (ZACIĄGANE Z st.secrets) ---
 PASSWORDS = {
-    'bednarek': 'magisterka',
-    'janowski': 'magisterka',
+    'bednarek': st.secrets["passwords"]["bednarek"],
+    'janowski': st.secrets["passwords"]["janowski"],
 }
 
 # --- WYBÓR WERSJI APLIKACJI ---
@@ -205,6 +205,17 @@ if not st.session_state.started:
             st.session_state.view_mode = 'mobilna'
             st.rerun()
 
+    st.markdown(
+        """
+        <div style='font-size:0.75rem; color:gray; margin-top:1rem; text-align:center;'>
+            Vibecoded by Jakub Bednarek<br>
+            Wydział Matematyki i Informatyki<br>
+            Uniwersytet im. Adama Mickiewicza w Poznaniu
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.stop()
 
 # ================= EKRAN 2 =================
@@ -230,7 +241,6 @@ with st.sidebar:
         """
     )
 
-    st.markdown("---")
     st.markdown("### Legenda ocen")
     st.markdown(
         """
@@ -269,6 +279,17 @@ with st.sidebar:
     ):
         st.session_state.view_mode = 'mobilna'
         st.rerun()
+
+    st.markdown(
+        """
+        <div style='font-size:0.75rem; color:gray; margin-top:1rem; text-align:center;'>
+            Vibecoded by Jakub Bednarek<br>
+            Wydział Matematyki i Informatyki<br>
+            Uniwersytet im. Adama Mickiewicza w Poznaniu
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # --- REZERWACJA PACZKI Z MIKRO-TIMESTAMPEM ---
