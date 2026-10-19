@@ -208,6 +208,19 @@ if not st.session_state.started:
     st.stop()
 
 # ================= EKRAN 2 =================
+# Wymuszenie otwarcia panelu bocznego poprzez styl CSS na Ekranie 2
+st.markdown(
+    """
+    <style>
+        section[data-testid="stSidebar"] {
+            transform: none !important;
+            visibility: visible !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 with st.sidebar:
     st.markdown("### Instrukcja do zadania")
     st.markdown(
@@ -290,7 +303,6 @@ def reserve_batch(batch_size=20):
             coder1_val = str(row['coder1']).strip()
             res_user, res_time = parse_reservation(row['reserved_by'])
 
-            # Wiersz jest wolny jeśli coder1 puste ORAZ (brak rezerwacji LUB rezerwacja własna LUB rezerwacja przeterminowana)
             is_unannotated = not coder1_val or coder1_val in ['None', 'nan']
             is_reservation_expired = (current_time - res_time) > RESERVATION_TIMEOUT_SECONDS
             is_free_reservation = (res_user is None) or (res_user == user_name) or is_reservation_expired
@@ -306,7 +318,6 @@ def reserve_batch(batch_size=20):
     else:
         selected_indices = random.sample(free_indices, batch_size)
 
-    # Zapis rezerwacji z identyfikatorem i znacznikiem czasu
     if not is_dedicated:
         reserved_col_idx = df.columns.get_loc('reserved_by') + 1
         reservation_value = f"{user_name}|{int(current_time)}"
