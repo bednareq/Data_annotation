@@ -127,8 +127,16 @@ def cleanup_stale_reservations():
         sheet.update_cells(cells_to_clear)
 
 
-# --- USER AUTHENTICATION / FIRST SCREEN ---
-if 'user_name' not in st.session_state:
+# --- DWU-EKRANOWY PRZEBIEG ---
+# Ekran 1 (started=False): instrukcja + zadanie; dopiero po kliknięciu 'Start!' przechodzimy dalej.
+# Ekran 2 (started=True): właściwa anotacja (przykłady losowane po starcie).
+if 'started' not in st.session_state:
+    st.session_state.started = False
+
+# ================= EKRAN 1 =================
+if not st.session_state.started:
+
+    # --- GŁÓWNA TREŚĆ EKRANU 1 (tylko instrukcja i zadanie) ---
     st.title("Slang czy nie slang? Oto jest pytanie")
 
     st.markdown(
@@ -138,93 +146,114 @@ if 'user_name' not in st.session_state:
 
         ### Ważne
         W trakcie oceny bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
-
-        ### Logowanie
-        Domyślnie jesteś zalogowany jako **Inny użytkownik** (identyfikator nadawany automatycznie).
-        Jeśli chcesz pracować jako **Bednarek** lub **Janowski**, wybierz odpowiednią opcję w **menu bocznym** (z hasłem).
         """
     )
 
-    # Domyślny użytkownik = 'Inny użytkownik' z automatycznie numerowanym identyfikatorem
-    st.session_state.user_name = get_next_user_id()
-    st.session_state.target_column = 'coder1'
-    st.session_state.is_dedicated_coder = False
+    st.markdown("---")
 
+    if st.button("Start!", type="primary"):
+        st.session_state.started = True
+        # Ustalenie tożsamości:
+        # jeśli w panelu bocznym zalogowano się jako Bednarek/Janowski -> taka tożsamość,
+        # w przeciwnym razie domyślny 'Inny użytkownik' z automatycznym identyfikatorem.
+        if 'dedicated_login' in st.session_state:
+            st.session_state.user_name = st.session_state.dedicated_login
+            st.session_state.target_column = st.session_state.dedicated_login
+            st.session_state.is_dedicated_coder = True
+        else:
+            st.session_state.user_name = get_next_user_id()
+            st.session_state.target_column = 'coder1'
+            st.session_state.is_dedicated_coder = False
+        st.rerun()
 
-# --- INSTRUCTION SECTION (FOR LOGGED-IN USERS) ---
+    # --- PANEL BOCZNY EKRANU 1 ---
+    with st.sidebar:
+        st.markdown("### Zaloguj się")
+        login_choice = st.radio(
+            "Wybierz konto:",
+            options=['Bednarek', 'Janowski'],
+            horizontal=True,
+        )
+        login_pw = st.text_input(f"Hasło dla {login_choice}:", type="password")
+        if st.button("Zaloguj", use_container_width=True, type="primary"):
+            required = PASSWORDS['bednarek'] if login_choice == 'Bednarek' else PASSWORDS['janowski']
+            if login_pw == required:
+                st.session_state.dedicated_login = 'bednarek' if login_choice == 'Bednarek' else 'janowski'
+                st.success(f"Zalogowano jako {login_choice}.")
+            else:
+                st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
+        st.markdown("Bez logowania: **Inny użytkownik** (identyfikator nadawany automatycznie).")
+
+        st.markdown("---")
+        st.markdown("### Wersja aplikacji")
+        if st.button(
+            "Przeglądarkowa",
+            use_container_width=True,
+            type="primary" if st.session_state.view_mode == 'przegladarkowa' else "secondary",
+        ):
+            st.session_state.view_mode = 'przegladarkowa'
+            st.rerun()
+        if st.button(
+            "Mobilna",
+            use_container_width=True,
+            type="primary" if st.session_state.view_mode == 'mobilna' else "secondary",
+        ):
+            st.session_state.view_mode = 'mobilna'
+            st.rerun()
+
+    st.stop()
+
+# ================= EKRAN 2 =================
+# --- INSTRUKCJA (opcjonalnie, domyślnie zwinięta) ---
 with st.expander("Instrukcja do zadania", expanded=False):
     st.markdown(
         """
         **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
         **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
-        **Wylogowanie**: Po zakończeniu zadania lub jeśli nie chcesz już kontynuować, kliknij przycisk **Wyloguj się** w panelu bocznym.
         """
     )
 
-# --- LOGOWANIE DEDYKOWANYCH ADNOTATORÓW W MENU BOCZNYM (domyślnie zwinięte) ---
-with st.sidebar.expander("Zaloguj jako Bednarek / Janowski", expanded=False):
-    dedicated_user = st.radio(
-        "Wybierz użytkownika:",
-        options=['Bednarek', 'Janowski'],
+# --- PANEL BOCZNY EKRANU 2 ---
+with st.sidebar:
+    st.markdown(f"**Zalogowano jako:** {st.session_state.user_name}")
+    st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
+
+    st.markdown("---")
+    st.markdown("### Wersja aplikacji")
+    if st.button(
+        "Przeglądarkowa",
+        use_container_width=True,
+        type="primary" if st.session_state.view_mode == 'przegladarkowa' else "secondary",
+    ):
+        st.session_state.view_mode = 'przegladarkowa'
+        st.rerun()
+    if st.button(
+        "Mobilna",
+        use_container_width=True,
+        type="primary" if st.session_state.view_mode == 'mobilna' else "secondary",
+    ):
+        st.session_state.view_mode = 'mobilna'
+        st.rerun()
+
+    if st.button("Wyloguj się"):
+        # Automatyczne zwalnianie rezerwacji przy wylogowaniu
+        if not st.session_state.get('is_dedicated_coder', False):
+            cleanup_stale_reservations()
+        for key in ['user_name', 'target_column', 'is_dedicated_coder', 'dedicated_login', 'selected_user_type', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("### Legenda ocen")
+    st.markdown(
+        """
+        * `Zgodne z definicją`: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
+        * `Niezgodne z definicją`: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
+        * `Brak kontekstu`: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
+        * `Nie wiem`: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
+        """
     )
-    ded_password = st.text_input(f"Hasło dla {dedicated_user}:", type="password")
-    if st.button("Start!", type="primary", use_container_width=True):
-        required = PASSWORDS['bednarek'] if dedicated_user == 'Bednarek' else PASSWORDS['janowski']
-        if ded_password == required:
-            user_name = 'bednarek' if dedicated_user == 'Bednarek' else 'janowski'
-            st.session_state.user_name = user_name
-            st.session_state.target_column = user_name
-            st.session_state.is_dedicated_coder = True
-            # Reset partii przy zmianie tożsamości
-            for k in ['selected_user_type', 'my_batch', 'current_in_batch', 'round_finished']:
-                if k in st.session_state:
-                    del st.session_state[k]
-            st.rerun()
-        else:
-            st.sidebar.error("Nieprawidłowe hasło. Spróbuj ponownie.")
-
-# Sidebar display for user status & legend
-st.sidebar.write(f"Zalogowano jako: **{st.session_state.user_name}**")
-st.sidebar.write(f"Przypisana kolumna: **{st.session_state.target_column}**")
-
-# --- WYBÓR WERSJI W PANELU BOCZNYM (po zalogowaniu) ---
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Wersja aplikacji")
-if st.sidebar.button(
-    "Przeglądarkowa",
-    use_container_width=True,
-    type="primary" if st.session_state.view_mode == 'przegladarkowa' else "secondary",
-):
-    st.session_state.view_mode = 'przegladarkowa'
-    st.rerun()
-if st.sidebar.button(
-    "Mobilna",
-    use_container_width=True,
-    type="primary" if st.session_state.view_mode == 'mobilna' else "secondary",
-):
-    st.session_state.view_mode = 'mobilna'
-    st.rerun()
-
-if st.sidebar.button("Wyloguj się"):
-    # Automatyczne zwalnianie rezerwacji przy wylogowaniu
-    if not st.session_state.get('is_dedicated_coder', False):
-        cleanup_stale_reservations()
-    
-    for key in ['user_name', 'target_column', 'is_dedicated_coder', 'selected_user_type', 'my_batch', 'current_in_batch', 'round_finished']:
-        if key in st.session_state:
-            del st.session_state[key]
-    st.rerun()
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### Legenda ocen")
-st.sidebar.markdown(
-    """
-    * `Zgodne z definicją`: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
-    * `Niezgodne z definicją`: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
-    * `Brak kontekstu`: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
-    * `Nie wiem`: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
-    """
-)
 
 
 # --- BATCH RESERVATION FUNCTION ---
