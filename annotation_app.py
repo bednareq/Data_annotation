@@ -163,8 +163,6 @@ if 'user_name' not in st.session_state:
             st.session_state.view_mode = 'mobilna'
             st.rerun()
 
-    st.markdown("---")
-
     # --- LOGOWANIE (wybór użytkownika przyciskiem) ---
     st.subheader("Logowanie")
 
@@ -198,7 +196,6 @@ if 'user_name' not in st.session_state:
     selected_type = st.session_state.get('selected_user_type')
 
     if selected_type in ['Bednarek', 'Janowski']:
-        st.write(f"Wybrano: **{selected_type}**")
         password_input = st.text_input(f"Hasło dla {selected_type}:", type="password")
         if st.button("Zaloguj się", type="primary"):
             password_ok = (
@@ -215,7 +212,6 @@ if 'user_name' not in st.session_state:
                 st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
 
     elif selected_type == 'Inny':
-        st.write("Wybrano: **Inny użytkownik** – identyfikator zostanie nadany automatycznie.")
         if st.button("Zaloguj się", type="primary"):
             user_name = get_next_user_id()
             st.session_state.user_name = user_name
@@ -392,8 +388,6 @@ else:
                 st.info("Twoje odpowiedzi zostały bezpiecznie zapisane. Możesz zamknąć przeglądarkę.")
 
     else:
-        st.write(f"Postęp w obecnej partii: **{st.session_state.current_in_batch} / {len(st.session_state.my_batch)}**")
-
         current_row = unannotated_in_batch.iloc[0]
         actual_index = current_row.name
 
@@ -402,18 +396,19 @@ else:
         definition = current_row.get('definition', '')
         comment = current_row.get('comment', '')
 
-        # Słowo + Definicja w tej samej linii (każda para „etykieta: wartość” w jednym wierszu)
+        # Etykiety pól w tym samym rozmiarze, wartości niepogrubione
         st.markdown(
-            f"<div style='font-size:1.25rem;'><b>Słowo:</b> {word}</div>",
+            f"<div style='font-size:1.1rem;'><b>Słowo:</b>&nbsp; <span style='font-weight:normal;'>{word}</span></div>",
             unsafe_allow_html=True
         )
         st.markdown(
-            f"<div style='font-size:1.05rem;'><b>Definicja:</b> {definition}</div>",
+            f"<div style='font-size:1.1rem;'><b>Definicja:</b>&nbsp; <span style='font-weight:normal;'>{definition}</span></div>",
             unsafe_allow_html=True
         )
-
-        # Komentarz w ramce poniżej (tak jak było)
-        st.subheader("Komentarz:")
+        st.markdown(
+            f"<div style='font-size:1.1rem;'><b>Komentarz:</b></div>",
+            unsafe_allow_html=True
+        )
         with st.container(border=True):
             st.write(f"{comment}")
 
