@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 import gspread
+import re
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
@@ -68,6 +69,27 @@ def get_sheet():
     return client.open(SPREADSHEET_NAME).sheet1
 
 
+def get_next_user_id():
+    """
+    Generuje automatycznie numerowany identyfikator dla zwykłego użytkownika.
+    Przykład: jeżeli w bazie są już id_1 i id_3, następny dostanie id_4.
+    Dzięki temu użytkownicy nie muszą wpisywać loginu, a w bazie (kolumna
+    'reserved_by') są identyfikowalni wg kolejności wejścia.
+    """
+    sheet = get_sheet()
+    records = sheet.get_all_records()
+    existing_numbers = []
+    if records:
+        df = pd.DataFrame(records)
+        if 'reserved_by' in df.columns:
+            for val in df['reserved_by'].astype(str):
+                m = re.match(r'^id_(\d+)$', val.strip())
+                if m:
+                    existing_numbers.append(int(m.group(1)))
+    next_num = max(existing_numbers) + 1 if existing_numbers else 1
+    return f"id_{next_num}"
+
+
 # --- AUTOMATIC CLEANUP FUNCTION (OPTIMIZED) ---
 def cleanup_stale_reservations():
     """
@@ -123,56 +145,84 @@ if 'user_name' not in st.session_state:
 
     # --- WYBÓR WERSJI APLIKACJI (mobilna / przeglądarkowa) ---
     st.subheader("Wersja aplikacji")
-    view_choice = st.radio(
-        "Wybierz wersję aplikacji:",
-        options=['przegladarkowa', 'mobilna'],
-        format_func=lambda x: "Przeglądarkowa" if x == 'przegladarkowa' else "Mobilna (dostosowana do wielkości ekranu)",
-        index=0 if st.session_state.view_mode == 'przegladarkowa' else 1,
-    )
-    if view_choice != st.session_state.view_mode:
-        st.session_state.view_mode = view_choice
-        st.rerun()
+    col_v1, col_v2 = st.columns(2)
+    with col_v1:
+        if st.button(
+            "Przeglądarkowa",
+            use_container_width=True,
+            type="primary" if st.session_state.view_mode == 'przegladarkowa' else "secondary",
+        ):
+            st.session_state.view_mode = 'przegladarkowa'
+            st.rerun()
+    with col_v2:
+        if st.button(
+            "Mobilna",
+            use_container_width=True,
+            type="primary" if st.session_state.view_mode == 'mobilna' else "secondary",
+        ):
+            st.session_state.view_mode = 'mobilna'
+            st.rerun()
 
     st.markdown("---")
 
-    # --- LOGOWANIE ---
+    # --- LOGOWANIE (wybór użytkownika przyciskiem) ---
     st.subheader("Logowanie")
-    st.write("Podany identyfikator jest wykorzystywany wyłącznie na potrzeby bieżącej sesji w celu uniknięcia dublowania przykładów")
 
-    user_type = st.radio(
-        "Wybierz użytkownika:",
-        options=['Bednarek', 'Janowski', 'Inny użytkownik'],
-    )
+    col_b, col_j, col_i = st.columns(3)
+    with col_b:
+        if st.button(
+            "Bednarek",
+            use_container_width=True,
+            type="primary" if st.session_state.get('selected_user_type') == 'Bednarek' else "secondary",
+        ):
+            st.session_state.selected_user_type = 'Bednarek'
+            st.rerun()
+    with col_j:
+        if st.button(
+            "Janowski",
+            use_container_width=True,
+            type="primary" if st.session_state.get('selected_user_type') == 'Janowski' else "secondary",
+        ):
+            st.session_state.selected_user_type = 'Janowski'
+            st.rerun()
+    with col_i:
+        if st.button(
+            "Inny użytkownik",
+            use_container_width=True,
+            type="primary" if st.session_state.get('selected_user_type') == 'Inny' else "secondary",
+        ):
+            st.session_state.selected_user_type = 'Inny'
+            st.rerun()
 
-    if user_type in ['Bednarek', 'Janowski']:
-        password_input = st.text_input(f"Hasło dla {user_type}:", type="password")
-    else:
-        other_name_input = st.text_input("Nazwa użytkownika (np. imię):").strip().lower()
+    st.markdown("")
+    selected_type = st.session_state.get('selected_user_type')
 
-    if st.button("Zaloguj się", type="primary"):
-        if user_type == 'Bednarek':
-            if password_input == PASSWORDS['bednarek']:
-                user_name, target_column, is_dedicated = 'bednarek', 'bednarek', True
+    if selected_type in ['Bednarek', 'Janowski']:
+        st.write(f"Wybrano: **{selected_type}**")
+        password_input = st.text_input(f"Hasło dla {selected_type}:", type="password")
+        if st.button("Zaloguj się", type="primary"):
+            password_ok = (
+                (selected_type == 'Bednarek' and password_input == PASSWORDS['bednarek']) or
+                (selected_type == 'Janowski' and password_input == PASSWORDS['janowski'])
+            )
+            if password_ok:
+                user_name = 'bednarek' if selected_type == 'Bednarek' else 'janowski'
+                st.session_state.user_name = user_name
+                st.session_state.target_column = user_name
+                st.session_state.is_dedicated_coder = True
+                st.rerun()
             else:
                 st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
-                st.stop()
-        elif user_type == 'Janowski':
-            if password_input == PASSWORDS['janowski']:
-                user_name, target_column, is_dedicated = 'janowski', 'janowski', True
-            else:
-                st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
-                st.stop()
-        else:  # Inny użytkownik (bez hasła)
-            if other_name_input:
-                user_name, target_column, is_dedicated = other_name_input, 'coder1', False
-            else:
-                st.warning("Proszę wprowadzić nazwę użytkownika.")
-                st.stop()
 
-        st.session_state.user_name = user_name
-        st.session_state.target_column = target_column
-        st.session_state.is_dedicated_coder = is_dedicated
-        st.rerun()
+    elif selected_type == 'Inny':
+        st.write("Wybrano: **Inny użytkownik** – identyfikator zostanie nadany automatycznie.")
+        if st.button("Zaloguj się", type="primary"):
+            user_name = get_next_user_id()
+            st.session_state.user_name = user_name
+            st.session_state.target_column = 'coder1'
+            st.session_state.is_dedicated_coder = False
+            st.rerun()
+
     st.stop()
 
 
@@ -195,7 +245,7 @@ if st.sidebar.button("Wyloguj się"):
     if not st.session_state.get('is_dedicated_coder', False):
         cleanup_stale_reservations()
     
-    for key in ['user_name', 'target_column', 'is_dedicated_coder', 'my_batch', 'current_in_batch', 'round_finished']:
+    for key in ['user_name', 'target_column', 'is_dedicated_coder', 'selected_user_type', 'my_batch', 'current_in_batch', 'round_finished']:
         if key in st.session_state:
             del st.session_state[key]
     st.rerun()
