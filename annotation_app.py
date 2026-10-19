@@ -5,6 +5,39 @@ from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
 
+# --- RESPONSYWNY UKŁAD: aplikacja automatycznie dopasowuje się do wielkości ekranu ---
+st.set_page_config(
+    page_title="Slang czy nie slang?",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+st.markdown(
+    """
+    <style>
+    /* Automatyczne dopasowanie wielkości tekstu do szerokości ekranu */
+    :root {
+        --base-font: clamp(1rem, 1.6vw, 1.35rem);
+    }
+    html, body, [class*="css"] {
+        font-size: var(--base-font);
+    }
+    /* Przyciski ocen zajmują całą dostępną szerokość i układają się responsywnie */
+    .stButton > button {
+        width: 100%;
+        white-space: normal;
+        height: auto;
+        min-height: 2.8rem;
+    }
+    /* Tytuły sekcji dopasowane do ekranu */
+    h1 { font-size: clamp(1.6rem, 4vw, 2.8rem) !important; }
+    h2 { font-size: clamp(1.3rem, 3vw, 2rem) !important; }
+    h3 { font-size: clamp(1.1rem, 2.4vw, 1.6rem) !important; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
 # --- GOOGLE SHEETS CONNECTION ---
 @st.cache_resource
 def get_gspread_client():
@@ -97,9 +130,9 @@ if 'user_name' not in st.session_state:
 with st.expander("Instrukcja do zadania", expanded=True):
     st.markdown(
         """
-        **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.    
-        **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.     
-        **Wylogowanie**: Po zakończeniu zadania lub jeśli nie chcesz już kontynuować, kliknij proszę przycisk **Wyloguj się** w panelu bocznym
+        **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
+        **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
+        **Wylogowanie**: Po zakończeniu zadania lub jeśli nie chcesz już kontynuować, kliknij przycisk **Wyloguj się** w panelu bocznym.
         """
     )
 
@@ -129,7 +162,7 @@ st.sidebar.markdown(
 )
 
 
-# --- BATCH RESERVATION FUNCTION (RANDOM SAMPLING) ---
+# --- BATCH RESERVATION FUNCTION ---
 def reserve_batch(batch_size=20):
     target_col = st.session_state.target_column
     is_dedicated = st.session_state.is_dedicated_coder
@@ -152,25 +185,23 @@ def reserve_batch(batch_size=20):
 
     # LOGIKA WORKFLOW:
     if is_dedicated:
-        # 1 & 2: Dedykowani adnotatorzy (bednarek, janowski) - wiersze bez oceny w ich kolumnie
+        # 1 & 2: Dedykowani adnotatorzy (bednarek, janowski) dostają przykłady bez oceny w swojej kolumnie
+        # Niezależnie od stanu 'reserved_by' (rezerwacje dotyczą tylko kolumny coder1)
         free_mask = (df[target_col].isna() | (df[target_col] == '') | (df[target_col] == 'None'))
     else:
-        # 3: Pozostali użytkownicy (coder1) - brak oceny ORAZ brak rezerwacji przez kogoś innego
+        # 3: Pozostali użytkownicy adnotują kolumnę 'coder1'.
+        # Musi nie być oceny w 'coder1' ORAZ brak rezerwacji przez kogoś innego
         free_mask = (
             (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None')) &
             (df['reserved_by'].isna() | (df['reserved_by'] == '') | (df['reserved_by'] == 'None'))
         )
 
-    free_df = df[free_mask]
+    free_indices = df[free_mask].index.tolist()
 
-    if free_df.empty:
+    if not free_indices:
         return pd.DataFrame()
 
-    # LOSOWANIE WIERSZY:
-    # Jeśli dostępnych jest mniej przykładów niż wielkość paczki, pobieramy wszystkie dostępne
-    sample_size = min(batch_size, len(free_df))
-    reserved_df = free_df.sample(n=sample_size)
-    selected_indices = reserved_df.index.tolist()
+    selected_indices = free_indices[:batch_size]
 
     # Rezerwacja 'reserved_by' ma miejsce TYLKO dla zwykłych koderów (coder1)
     if not is_dedicated:
@@ -181,6 +212,7 @@ def reserve_batch(batch_size=20):
         ]
         sheet.update_cells(cells_to_update)
 
+    reserved_df = df.loc[selected_indices].copy()
     return reserved_df
 
 
@@ -209,7 +241,7 @@ def save_annotation(row_index, value):
         gspread.Cell(row=sheet_row_num, col=target_col_idx, value=str(value))
     ]
 
-    # Zwalniamy flagę rezerwacji tylko dla zwykłych użytkowników (coder1)
+    # Zwalniamy flaga rezerwacji tylko dla zwykłych użytkowników (coder1)
     if not st.session_state.is_dedicated_coder and 'reserved_by' in df_cols:
         reserved_col_idx = df_cols.index('reserved_by') + 1
         cells_to_update.append(
@@ -265,16 +297,25 @@ else:
         current_row = unannotated_in_batch.iloc[0]
         actual_index = current_row.name
 
-        # --- SEKCJA PRZYKŁADU ---
-        st.subheader("Słowo:")
-        st.write(current_row.get('word', ''))
-        
-        st.subheader("Definicja:")
-        st.write(f"{current_row.get('definition', '')}")
+        # --- SEKCJA PRZYKŁADU (wszystko na jednym ekranie, adaptacyjnie) ---
+        word = current_row.get('word', '')
+        definition = current_row.get('definition', '')
+        comment = current_row.get('comment', '')
 
+        # Słowo + Definicja w tej samej linii (każda para „etykieta: wartość” w jednym wierszu)
+        st.markdown(
+            f"<div style='font-size:1.25rem;'><b>Słowo:</b> {word}</div>",
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f"<div style='font-size:1.05rem;'><b>Definicja:</b> {definition}</div>",
+            unsafe_allow_html=True
+        )
+
+        # Komentarz w ramce poniżej (tak jak było)
         st.subheader("Komentarz:")
         with st.container(border=True):
-            st.write(f"{current_row.get('comment', '')}")
+            st.write(f"{comment}")
 
         st.markdown("---")
         st.markdown("### Wybierz ocenę")
