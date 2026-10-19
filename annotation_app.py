@@ -92,11 +92,17 @@ def get_next_user_id():
 
 
 # --- AUTOMATIC CLEANUP FUNCTION (OPTIMIZED) ---
-def cleanup_stale_reservations():
+def cleanup_my_reservations():
     """
-    Czyszczenie kolumny 'reserved_by' wyłącznie dla wierszy,
-    które nie zostały jeszcze ocenione w kolumnie 'coder1'.
+    Czyści z kolumny 'reserved_by' wyłącznie wiersze, które są zarezerwowane przez
+    BIEŻĄCEGO użytkownika i nie zostały jeszcze ocenione w kolumnie 'coder1'.
+    Dzięki temu rezerwacje innych osób pozostają nietknięte, co pozwala
+    kilku osobom kodować jednocześnie w kolumnie 'coder1'.
     """
+    user = st.session_state.get('user_name')
+    if not user:
+        return
+
     sheet = get_sheet()
     records = sheet.get_all_records()
     if not records:
@@ -109,21 +115,21 @@ def cleanup_stale_reservations():
             df[col] = ''
         df[col] = df[col].astype(str)
 
-    # Szukamy rezerwacji bez wpisu w coder1
-    stale_mask = (
-        (~df['reserved_by'].isna()) & (df['reserved_by'] != '') & (df['reserved_by'] != 'None') &
+    # Wiersze zarezerwowane przez bieżącego użytkownika, bez oceny w coder1
+    my_mask = (
+        (df['reserved_by'] == user) &
         (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None'))
     )
 
-    stale_indices = df[stale_mask].index.tolist()
+    my_indices = df[my_mask].index.tolist()
 
-    if stale_indices:
+    if my_indices:
         reserved_col_idx = df.columns.get_loc('reserved_by') + 1
-        
+
         # Szybka aktualizacja zbiorcza bez wywoływania sheet.cell() w pętli
         cells_to_clear = [
             gspread.Cell(row=idx + 2, col=reserved_col_idx, value='') 
-            for idx in stale_indices
+            for idx in my_indices
         ]
         sheet.update_cells(cells_to_clear)
 
@@ -219,15 +225,35 @@ if not st.session_state.started:
     st.stop()
 
 # ================= EKRAN 2 =================
-# --- PANEL BOCZNY EKRANU 2 ---
+# --- PANEL BOCZNY EKRANU 2 (kolejność: Instrukcja -> Legenda -> Użytkownik -> Wersja) ---
 with st.sidebar:
+    st.markdown("### Instrukcja do zadania")
+    st.markdown(
+        """
+        **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
+        **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
+        """
+    )
+
+    st.markdown("---")
+    st.markdown("### Legenda ocen")
+    st.markdown(
+        """
+        * `Zgodne z definicją`: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
+        * `Niezgodne z definicją`: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
+        * `Brak kontekstu`: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
+        * `Nie wiem`: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
+        """
+    )
+
+    st.markdown("---")
     st.markdown(f"**Zalogowano jako:** {st.session_state.user_name}")
     st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
 
     if st.button("Wyloguj się"):
-        # Automatyczne zwalnianie rezerwacji przy wylogowaniu
+        # Automatyczne zwalnianie rezerwacji przy wylogowaniu (tylko własne)
         if not st.session_state.get('is_dedicated_coder', False):
-            cleanup_stale_reservations()
+            cleanup_my_reservations()
         for key in ['user_name', 'target_column', 'is_dedicated_coder', 'dedicated_login', 'selected_login', 'selected_user_type', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
             if key in st.session_state:
                 del st.session_state[key]
@@ -250,35 +276,15 @@ with st.sidebar:
         st.session_state.view_mode = 'mobilna'
         st.rerun()
 
-    st.markdown("---")
-    st.markdown("### Instrukcja do zadania")
-    st.markdown(
-        """
-        **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
-        **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
-        """
-    )
-
-    st.markdown("---")
-    st.markdown("### Legenda ocen")
-    st.markdown(
-        """
-        * `Zgodne z definicją`: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
-        * `Niezgodne z definicją`: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
-        * `Brak kontekstu`: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
-        * `Nie wiem`: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
-        """
-    )
-
 
 # --- BATCH RESERVATION FUNCTION ---
 def reserve_batch(batch_size=20):
     target_col = st.session_state.target_column
     is_dedicated = st.session_state.is_dedicated_coder
 
-    # Jeśli loguje się zwykły koder (coder1), czyścimy nieaktywne rezerwacje
+    # Jeśli loguje się zwykły koder (coder1), czyścimy JEGO WŁASNE nieaktywne rezerwacje
     if not is_dedicated:
-        cleanup_stale_reservations()
+        cleanup_my_reservations()
 
     sheet = get_sheet()
     records = sheet.get_all_records()
