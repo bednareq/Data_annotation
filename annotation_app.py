@@ -3,48 +3,43 @@ import streamlit as st
 import gspread
 import re
 import random
+import time
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
+RESERVATION_TIMEOUT_SECONDS = 1200  # Rezerwacja wygasa po 20 minutach
 
-# --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (wpisz prawdziwe hasła) ---
+# --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW ---
 PASSWORDS = {
     'bednarek': 'magisterka',
     'janowski': 'magisterka',
 }
 
 # --- WYBÓR WERSJI APLIKACJI ---
-# 'przegladarkowa'  -> standardowy układ (tak jak przed zmianami)
-# 'mobilna'         -> układ automatycznie dostosowany do wielkości ekranu (DOMYŚLNY)
 if 'view_mode' not in st.session_state:
     st.session_state.view_mode = 'mobilna'
 
-# set_page_config musi być pierwszą komendą Streamlit, dlatego czytamy stan przed nią
 if st.session_state.view_mode == 'mobilna':
     st.set_page_config(page_title="Slang czy nie slang?", layout="wide", initial_sidebar_state="expanded")
 else:
     st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state="expanded")
 
-# CSS adaptacyjny stosujemy WYŁĄCZNIE w trybie mobilnym
 if st.session_state.view_mode == 'mobilna':
     st.markdown(
         """
         <style>
-        /* Automatyczne dopasowanie wielkości tekstu do szerokości ekranu */
         :root {
             --base-font: clamp(1rem, 1.6vw, 1.35rem);
         }
         html, body, [class*="css"] {
             font-size: var(--base-font);
         }
-        /* Przyciski ocen zajmują całą dostępną szerokość i układają się responsywnie */
         .stButton > button {
             width: 100%;
             white-space: normal;
             height: auto;
             min-height: 2.8rem;
         }
-        /* Tytuły sekcji dopasowane do ekranu */
         h1 { font-size: clamp(1.6rem, 4vw, 2.8rem) !important; }
         h2 { font-size: clamp(1.3rem, 3vw, 2rem) !important; }
         h3 { font-size: clamp(1.1rem, 2.4vw, 1.6rem) !important; }
@@ -52,7 +47,6 @@ if st.session_state.view_mode == 'mobilna':
         """,
         unsafe_allow_html=True
     )
-
 
 # --- GOOGLE SHEETS CONNECTION ---
 @st.cache_resource
@@ -69,36 +63,38 @@ def get_sheet():
     client = get_gspread_client()
     return client.open(SPREADSHEET_NAME).sheet1
 
+def parse_reservation(val):
+    """Pomocnicza funkcja do odczytywania ID koderów oraz znaczników czasu."""
+    val_str = str(val).strip()
+    if not val_str or val_str in ['None', 'nan']:
+        return None, 0
+    if '|' in val_str:
+        parts = val_str.split('|')
+        try:
+            return parts[0], float(parts[1])
+        except ValueError:
+            return parts[0], 0
+    return val_str, 0
 
 def get_next_user_id():
-    """
-    Generuje automatycznie numerowany identyfikator dla zwykłego użytkownika.
-    Przykład: jeżeli w bazie są już id_1 i id_3, następny dostanie id_4.
-    Dzięki temu użytkownicy nie muszą wpisywać loginu, a w bazie (kolumna
-    'reserved_by') są identyfikowalni wg kolejności wejścia.
-    """
+    """Generuje unikalne ID dla anonimowego użytkownika."""
     sheet = get_sheet()
     records = sheet.get_all_records()
     existing_numbers = []
     if records:
         df = pd.DataFrame(records)
         if 'reserved_by' in df.columns:
-            for val in df['reserved_by'].astype(str):
-                m = re.match(r'^id_(\d+)$', val.strip())
-                if m:
-                    existing_numbers.append(int(m.group(1)))
+            for val in df['reserved_by']:
+                user_id, _ = parse_reservation(val)
+                if user_id:
+                    m = re.match(r'^id_(\d+)$', user_id)
+                    if m:
+                        existing_numbers.append(int(m.group(1)))
     next_num = max(existing_numbers) + 1 if existing_numbers else 1
     return f"id_{next_num}"
 
-
-# --- AUTOMATIC CLEANUP FUNCTION (OPTIMIZED) ---
 def cleanup_my_reservations():
-    """
-    Czyści z kolumny 'reserved_by' wyłącznie wiersze, które są zarezerwowane przez
-    BIEŻĄCEGO użytkownika i nie zostały jeszcze ocenione w kolumnie 'coder1'.
-    Dzięki temu rezerwacje innych osób pozostają nietknięte, co pozwala
-    kilku osobom kodować jednocześnie w kolumnie 'coder1'.
-    """
+    """Czyszczenie wyłącznie własnych rezerwacji użytkownika."""
     user = st.session_state.get('user_name')
     if not user:
         return
@@ -113,37 +109,28 @@ def cleanup_my_reservations():
     for col in ['coder1', 'reserved_by']:
         if col not in df.columns:
             df[col] = ''
-        df[col] = df[col].astype(str)
 
-    # Wiersze zarezerwowane przez bieżącego użytkownika, bez oceny w coder1
-    my_mask = (
-        (df['reserved_by'] == user) &
-        (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None'))
-    )
+    reserved_col_idx = df.columns.get_loc('reserved_by') + 1
+    cells_to_clear = []
 
-    my_indices = df[my_mask].index.tolist()
+    for idx, row in df.iterrows():
+        coder1_val = str(row['coder1']).strip()
+        res_user, _ = parse_reservation(row['reserved_by'])
 
-    if my_indices:
-        reserved_col_idx = df.columns.get_loc('reserved_by') + 1
+        # Jeżeli zarezerwowano przez bieżącego użytkownika i nie ma wpisu w coder1
+        if res_user == user and (not coder1_val or coder1_val in ['None', 'nan']):
+            cells_to_clear.append(
+                gspread.Cell(row=idx + 2, col=reserved_col_idx, value='')
+            )
 
-        # Szybka aktualizacja zbiorcza bez wywoływania sheet.cell() w pętli
-        cells_to_clear = [
-            gspread.Cell(row=idx + 2, col=reserved_col_idx, value='') 
-            for idx in my_indices
-        ]
+    if cells_to_clear:
         sheet.update_cells(cells_to_clear)
 
-
-# --- DWU-EKRANOWY PRZEBIEG ---
-# Ekran 1 (started=False): instrukcja + zadanie; dopiero po kliknięciu 'Start!' przechodzimy dalej.
-# Ekran 2 (started=True): właściwa anotacja (przykłady losowane po starcie).
+# --- EKRAN STARTOOWY ---
 if 'started' not in st.session_state:
     st.session_state.started = False
 
-# ================= EKRAN 1 =================
 if not st.session_state.started:
-
-    # --- GŁÓWNA TREŚĆ EKRANU 1 (tylko instrukcja i zadanie) ---
     st.title("Slang czy nie slang? Oto jest pytanie")
 
     st.markdown(
@@ -160,9 +147,6 @@ if not st.session_state.started:
 
     if st.button("Start!", type="primary"):
         st.session_state.started = True
-        # Ustalenie tożsamości:
-        # jeśli w panelu bocznym zalogowano się jako Bednarek/Janowski -> taka tożsamość,
-        # w przeciwnym razie domyślny 'Inny użytkownik' z automatycznym identyfikatorem.
         if 'dedicated_login' in st.session_state:
             st.session_state.user_name = st.session_state.dedicated_login
             st.session_state.target_column = st.session_state.dedicated_login
@@ -173,7 +157,6 @@ if not st.session_state.started:
             st.session_state.is_dedicated_coder = False
         st.rerun()
 
-    # --- PANEL BOCZNY EKRANU 1 ---
     with st.sidebar:
         st.markdown("### Zaloguj się")
         col_login_b, col_login_j = st.columns(2)
@@ -225,7 +208,6 @@ if not st.session_state.started:
     st.stop()
 
 # ================= EKRAN 2 =================
-# --- PANEL BOCZNY EKRANU 2 (kolejność: Instrukcja -> Legenda -> Użytkownik -> Wersja) ---
 with st.sidebar:
     st.markdown("### Instrukcja do zadania")
     st.markdown(
@@ -251,10 +233,9 @@ with st.sidebar:
     st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
 
     if st.button("Wyloguj się"):
-        # Automatyczne zwalnianie rezerwacji przy wylogowaniu (tylko własne)
         if not st.session_state.get('is_dedicated_coder', False):
             cleanup_my_reservations()
-        for key in ['user_name', 'target_column', 'is_dedicated_coder', 'dedicated_login', 'selected_login', 'selected_user_type', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
+        for key in ['user_name', 'target_column', 'is_dedicated_coder', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -277,12 +258,12 @@ with st.sidebar:
         st.rerun()
 
 
-# --- BATCH RESERVATION FUNCTION ---
+# --- REZERWACJA PACZKI Z MIKRO-TIMESTAMPEM ---
 def reserve_batch(batch_size=20):
     target_col = st.session_state.target_column
     is_dedicated = st.session_state.is_dedicated_coder
+    user_name = st.session_state.user_name
 
-    # Jeśli loguje się zwykły koder (coder1), czyścimy JEGO WŁASNE nieaktywne rezerwacje
     if not is_dedicated:
         cleanup_my_reservations()
 
@@ -296,37 +277,41 @@ def reserve_batch(batch_size=20):
     for col in ['bednarek', 'janowski', 'coder1', 'reserved_by']:
         if col not in df.columns:
             df[col] = ''
-        df[col] = df[col].astype(str)
 
-    # LOGIKA WORKFLOW:
-    if is_dedicated:
-        # 1 & 2: Dedykowani adnotatorzy (bednarek, janowski) dostają przykłady bez oceny w swojej kolumnie
-        # Niezależnie od stanu 'reserved_by' (rezerwacje dotyczą tylko kolumny coder1)
-        free_mask = (df[target_col].isna() | (df[target_col] == '') | (df[target_col] == 'None'))
-    else:
-        # 3: Pozostali użytkownicy adnotują kolumnę 'coder1'.
-        # Musi nie być oceny w 'coder1' ORAZ brak rezerwacji przez kogoś innego
-        free_mask = (
-            (df['coder1'].isna() | (df['coder1'] == '') | (df['coder1'] == 'None')) &
-            (df['reserved_by'].isna() | (df['reserved_by'] == '') | (df['reserved_by'] == 'None'))
-        )
+    free_indices = []
+    current_time = time.time()
 
-    free_indices = df[free_mask].index.tolist()
+    for idx, row in df.iterrows():
+        if is_dedicated:
+            val = str(row[target_col]).strip()
+            if not val or val in ['None', 'nan']:
+                free_indices.append(idx)
+        else:
+            coder1_val = str(row['coder1']).strip()
+            res_user, res_time = parse_reservation(row['reserved_by'])
+
+            # Wiersz jest wolny jeśli coder1 puste ORAZ (brak rezerwacji LUB rezerwacja własna LUB rezerwacja przeterminowana)
+            is_unannotated = not coder1_val or coder1_val in ['None', 'nan']
+            is_reservation_expired = (current_time - res_time) > RESERVATION_TIMEOUT_SECONDS
+            is_free_reservation = (res_user is None) or (res_user == user_name) or is_reservation_expired
+
+            if is_unannotated and is_free_reservation:
+                free_indices.append(idx)
 
     if not free_indices:
         return pd.DataFrame()
 
-    # LOSOWY dobór przykładów (a nie branie pierwszych 20 po kolei)
     if len(free_indices) <= batch_size:
         selected_indices = free_indices
     else:
         selected_indices = random.sample(free_indices, batch_size)
 
-    # Rezerwacja 'reserved_by' ma miejsce TYLKO dla zwykłych koderów (coder1)
+    # Zapis rezerwacji z identyfikatorem i znacznikiem czasu
     if not is_dedicated:
         reserved_col_idx = df.columns.get_loc('reserved_by') + 1
+        reservation_value = f"{user_name}|{int(current_time)}"
         cells_to_update = [
-            gspread.Cell(row=idx + 2, col=reserved_col_idx, value=st.session_state.user_name)
+            gspread.Cell(row=idx + 2, col=reserved_col_idx, value=reservation_value)
             for idx in selected_indices
         ]
         sheet.update_cells(cells_to_update)
@@ -335,7 +320,6 @@ def reserve_batch(batch_size=20):
     return reserved_df
 
 
-# --- BATCH INITIALIZATION FOR SESSION ---
 if 'my_batch' not in st.session_state:
     with st.spinner("Pobieram nową porcję przykładów z bazy..."):
         st.session_state.my_batch = reserve_batch(batch_size=20)
@@ -343,7 +327,6 @@ if 'my_batch' not in st.session_state:
         st.session_state.round_finished = False
 
 
-# --- SAVE ANNOTATION FUNCTION ---
 def save_annotation(row_index, value):
     sheet = get_sheet()
     records = sheet.get_all_records()
@@ -351,7 +334,7 @@ def save_annotation(row_index, value):
         return
 
     df_cols = list(records[0].keys())
-    sheet_row_num = row_index + 2  # +2 ze względu na nagłówek i indeksowanie 1-based
+    sheet_row_num = row_index + 2
 
     target_col = st.session_state.target_column
     target_col_idx = df_cols.index(target_col) + 1
@@ -360,17 +343,14 @@ def save_annotation(row_index, value):
         gspread.Cell(row=sheet_row_num, col=target_col_idx, value=str(value))
     ]
 
-    # Zwalniamy flaga rezerwacji tylko dla zwykłych użytkowników (coder1)
     if not st.session_state.is_dedicated_coder and 'reserved_by' in df_cols:
         reserved_col_idx = df_cols.index('reserved_by') + 1
         cells_to_update.append(
             gspread.Cell(row=sheet_row_num, col=reserved_col_idx, value='')
         )
 
-    # Wysłanie zmian w jednej operacji zbiorczej
     sheet.update_cells(cells_to_update)
 
-    # Aktualizacja lokalnego stanu
     st.session_state.my_batch.loc[row_index, target_col] = str(value)
     st.session_state.current_in_batch += 1
 
@@ -380,7 +360,7 @@ def save_annotation(row_index, value):
     st.rerun()
 
 
-# --- ANNOTATOR USER INTERFACE ---
+# --- INTERFEJS ADNOTATORA ---
 target_col = st.session_state.target_column
 
 if st.session_state.my_batch.empty:
@@ -389,8 +369,8 @@ if st.session_state.my_batch.empty:
 else:
     unannotated_in_batch = st.session_state.my_batch[
         st.session_state.my_batch[target_col].isna() | 
-        (st.session_state.my_batch[target_col] == '') | 
-        (st.session_state.my_batch[target_col] == 'None')
+        (st.session_state.my_batch[target_col].astype(str).str.strip() == '') | 
+        (st.session_state.my_batch[target_col].astype(str).str.strip() == 'None')
     ]
 
     if st.session_state.round_finished or unannotated_in_batch.empty:
@@ -414,12 +394,10 @@ else:
         current_row = unannotated_in_batch.iloc[0]
         actual_index = current_row.name
 
-        # --- SEKCJA PRZYKŁADU (wszystko na jednym ekranie, adaptacyjnie) ---
         word = current_row.get('word', '')
         definition = current_row.get('definition', '')
         comment = current_row.get('comment', '')
 
-        # Etykiety pól w tym samym rozmiarze, wartości niepogrubione
         st.markdown(
             f"<div style='font-size:1.1rem;'><b>Słowo:</b>&nbsp; <span style='font-weight:normal;'>{word}</span></div>",
             unsafe_allow_html=True
