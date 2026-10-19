@@ -5,37 +5,51 @@ from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
 
-# --- RESPONSYWNY UKŁAD: aplikacja automatycznie dopasowuje się do wielkości ekranu ---
-st.set_page_config(
-    page_title="Slang czy nie slang?",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-st.markdown(
-    """
-    <style>
-    /* Automatyczne dopasowanie wielkości tekstu do szerokości ekranu */
-    :root {
-        --base-font: clamp(1rem, 1.6vw, 1.35rem);
-    }
-    html, body, [class*="css"] {
-        font-size: var(--base-font);
-    }
-    /* Przyciski ocen zajmują całą dostępną szerokość i układają się responsywnie */
-    .stButton > button {
-        width: 100%;
-        white-space: normal;
-        height: auto;
-        min-height: 2.8rem;
-    }
-    /* Tytuły sekcji dopasowane do ekranu */
-    h1 { font-size: clamp(1.6rem, 4vw, 2.8rem) !important; }
-    h2 { font-size: clamp(1.3rem, 3vw, 2rem) !important; }
-    h3 { font-size: clamp(1.1rem, 2.4vw, 1.6rem) !important; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (wpisz prawdziwe hasła) ---
+PASSWORDS = {
+    'bednarek': 'magisterka',
+    'janowski': 'magisterka',
+}
+
+# --- WYBÓR WERSJI APLIKACJI ---
+# 'przegladarkowa'  -> standardowy układ (tak jak przed zmianami)
+# 'mobilna'         -> układ automatycznie dostosowany do wielkości ekranu
+if 'view_mode' not in st.session_state:
+    st.session_state.view_mode = 'przegladarkowa'
+
+# set_page_config musi być pierwszą komendą Streamlit, dlatego czytamy stan przed nią
+if st.session_state.view_mode == 'mobilna':
+    st.set_page_config(page_title="Slang czy nie slang?", layout="wide", initial_sidebar_state="expanded")
+else:
+    st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state="expanded")
+
+# CSS adaptacyjny stosujemy WYŁĄCZNIE w trybie mobilnym
+if st.session_state.view_mode == 'mobilna':
+    st.markdown(
+        """
+        <style>
+        /* Automatyczne dopasowanie wielkości tekstu do szerokości ekranu */
+        :root {
+            --base-font: clamp(1rem, 1.6vw, 1.35rem);
+        }
+        html, body, [class*="css"] {
+            font-size: var(--base-font);
+        }
+        /* Przyciski ocen zajmują całą dostępną szerokość i układają się responsywnie */
+        .stButton > button {
+            width: 100%;
+            white-space: normal;
+            height: auto;
+            min-height: 2.8rem;
+        }
+        /* Tytuły sekcji dopasowane do ekranu */
+        h1 { font-size: clamp(1.6rem, 4vw, 2.8rem) !important; }
+        h2 { font-size: clamp(1.3rem, 3vw, 2rem) !important; }
+        h3 { font-size: clamp(1.1rem, 2.4vw, 1.6rem) !important; }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # --- GOOGLE SHEETS CONNECTION ---
@@ -92,9 +106,9 @@ def cleanup_stale_reservations():
 
 
 # --- USER AUTHENTICATION / FIRST SCREEN ---
-st.title("Slang czy nie slang? Oto jest pytanie")
-
 if 'user_name' not in st.session_state:
+    st.title("Slang czy nie slang? Oto jest pytanie")
+
     st.markdown(
         """
         ### Instrukcja i zadanie
@@ -104,30 +118,66 @@ if 'user_name' not in st.session_state:
         W trakcie oceny bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
         """
     )
-    
+
     st.markdown("---")
-    st.subheader("Wprowadź nazwę użytkownika")
+
+    # --- WYBÓR WERSJI APLIKACJI (mobilna / przeglądarkowa) ---
+    st.subheader("Wersja aplikacji")
+    view_choice = st.radio(
+        "Wybierz wersję aplikacji:",
+        options=['przegladarkowa', 'mobilna'],
+        format_func=lambda x: "Przeglądarkowa" if x == 'przegladarkowa' else "Mobilna (dostosowana do wielkości ekranu)",
+        index=0 if st.session_state.view_mode == 'przegladarkowa' else 1,
+    )
+    if view_choice != st.session_state.view_mode:
+        st.session_state.view_mode = view_choice
+        st.rerun()
+
+    st.markdown("---")
+
+    # --- LOGOWANIE ---
+    st.subheader("Logowanie")
     st.write("Podany identyfikator jest wykorzystywany wyłącznie na potrzeby bieżącej sesji w celu uniknięcia dublowania przykładów")
 
-    user_input = st.text_input("Nazwa użytkownika (np. imię):").strip().lower()
-    
+    user_type = st.radio(
+        "Wybierz użytkownika:",
+        options=['Bednarek', 'Janowski', 'Inny użytkownik'],
+    )
+
+    if user_type in ['Bednarek', 'Janowski']:
+        password_input = st.text_input(f"Hasło dla {user_type}:", type="password")
+    else:
+        other_name_input = st.text_input("Nazwa użytkownika (np. imię):").strip().lower()
+
     if st.button("Zaloguj się", type="primary"):
-        if user_input:
-            st.session_state.user_name = user_input
-            if user_input in ['bednarek', 'janowski']:
-                st.session_state.target_column = user_input
-                st.session_state.is_dedicated_coder = True
+        if user_type == 'Bednarek':
+            if password_input == PASSWORDS['bednarek']:
+                user_name, target_column, is_dedicated = 'bednarek', 'bednarek', True
             else:
-                st.session_state.target_column = 'coder1'
-                st.session_state.is_dedicated_coder = False
-            st.rerun()
-        else:
-            st.warning("Proszę wprowadzić nazwę użytkownika.")
+                st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
+                st.stop()
+        elif user_type == 'Janowski':
+            if password_input == PASSWORDS['janowski']:
+                user_name, target_column, is_dedicated = 'janowski', 'janowski', True
+            else:
+                st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
+                st.stop()
+        else:  # Inny użytkownik (bez hasła)
+            if other_name_input:
+                user_name, target_column, is_dedicated = other_name_input, 'coder1', False
+            else:
+                st.warning("Proszę wprowadzić nazwę użytkownika.")
+                st.stop()
+
+        st.session_state.user_name = user_name
+        st.session_state.target_column = target_column
+        st.session_state.is_dedicated_coder = is_dedicated
+        st.rerun()
     st.stop()
 
 
 # --- INSTRUCTION SECTION (FOR LOGGED-IN USERS) ---
-with st.expander("Instrukcja do zadania", expanded=True):
+with st.expander("Instrukcja do zadania", expanded=False):
     st.markdown(
         """
         **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
