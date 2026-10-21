@@ -230,7 +230,7 @@ if not st.session_state.started:
     st.markdown(
         """
         <div style='font-size:0.75rem; color:gray; margin-top:1rem; text-align:center;'>
-            Vibecoded by Jakub Bednarek<br>
+            Jakub Bednarek<br>
             Wydział Matematyki i Informatyki<br>
             Uniwersytet im. Adama Mickiewicza w Poznaniu
         </div>
@@ -292,7 +292,7 @@ with st.sidebar:
     st.markdown(
         """
         <div style='font-size:0.75rem; color:gray; margin-top:1rem; text-align:center;'>
-            Vibecoded by Jakub Bednarek<br>
+            Jakub Bednarek<br>
             Wydział Matematyki i Informatyki<br>
             Uniwersytet im. Adama Mickiewicza w Poznaniu
         </div>
