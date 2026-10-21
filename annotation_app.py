@@ -7,7 +7,6 @@ import time
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
-RESERVATION_TIMEOUT_SECONDS = 1200  # Rezerwacja wygasa po 20 minutach
 
 # --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (ZACIĄGANE Z st.secrets) ---
 PASSWORDS = {
@@ -64,17 +63,11 @@ def get_sheet():
     return client.open(SPREADSHEET_NAME).sheet1
 
 def parse_reservation(val):
-    """Pomocnicza funkcja do odczytywania ID koderów oraz znaczników czasu."""
+    """Pomocnicza funkcja do odczytywania ID koderów z kolumny reserved_by."""
     val_str = str(val).strip()
     if not val_str or val_str in ['None', 'nan']:
-        return None, 0
-    if '|' in val_str:
-        parts = val_str.split('|')
-        try:
-            return parts[0], float(parts[1])
-        except ValueError:
-            return parts[0], 0
-    return val_str, 0
+        return None
+    return val_str
 
 def get_next_user_id():
     """Generuje unikalne ID dla anonimowego użytkownika."""
@@ -85,7 +78,7 @@ def get_next_user_id():
         df = pd.DataFrame(records)
         if 'reserved_by' in df.columns:
             for val in df['reserved_by']:
-                user_id, _ = parse_reservation(val)
+                user_id = parse_reservation(val)
                 if user_id:
                     m = re.match(r'^id_(\d+)$', user_id)
                     if m:
@@ -115,9 +108,9 @@ def cleanup_my_reservations():
 
     for idx, row in df.iterrows():
         coder1_val = str(row['coder1']).strip()
-        res_user, _ = parse_reservation(row['reserved_by'])
+        res_user = parse_reservation(row['reserved_by'])
 
-        # Jeżeli zarezerwowano przez bieżącego użytkownika i nie ma wpisu w coder1
+        # Jeżeli zarezerwowano przez bieżącego użytkownika i nie ma jeszcze oceny
         if res_user == user and (not coder1_val or coder1_val in ['None', 'nan']):
             cells_to_clear.append(
                 gspread.Cell(row=idx + 2, col=reserved_col_idx, value='')
@@ -126,7 +119,26 @@ def cleanup_my_reservations():
     if cells_to_clear:
         sheet.update_cells(cells_to_clear)
 
-# --- EKRAN STARTOOWY ---
+def clear_all_reservations():
+    """Czyszczenie całej kolumny reserved_by (funkcja dla administratora/Bednarka)."""
+    sheet = get_sheet()
+    records = sheet.get_all_records()
+    if not records:
+        return
+
+    df = pd.DataFrame(records)
+    if 'reserved_by' not in df.columns:
+        return
+
+    reserved_col_idx = df.columns.get_loc('reserved_by') + 1
+    cells_to_clear = [
+        gspread.Cell(row=idx + 2, col=reserved_col_idx, value='')
+        for idx in range(len(df))
+    ]
+    if cells_to_clear:
+        sheet.update_cells(cells_to_clear)
+
+# --- EKRAN STARTOWY ---
 if 'started' not in st.session_state:
     st.session_state.started = False
 
@@ -181,8 +193,11 @@ if not st.session_state.started:
         if selected_login:
             login_pw = st.text_input(f"Hasło dla {selected_login}:", type="password")
             if st.button("Zaloguj", use_container_width=True, type="primary"):
-                required = PASSWORDS['bednarek'] if selected_login == 'Bednarek' else PASSWORDS['janowski']
-                if login_pw == required:
+                # Specjalne hasło 'clean' dla konta Bednarek czyszczące wszystkie rezerwacje
+                if selected_login == 'Bednarek' and login_pw == 'clean':
+                    clear_all_reservations()
+                    st.success("Wyczyszczono całą kolumnę reserved_by!")
+                elif login_pw == (PASSWORDS['bednarek'] if selected_login == 'Bednarek' else PASSWORDS['janowski']):
                     st.session_state.dedicated_login = 'bednarek' if selected_login == 'Bednarek' else 'janowski'
                     st.success(f"Zalogowano jako {selected_login}.")
                 else:
@@ -219,19 +234,6 @@ if not st.session_state.started:
     st.stop()
 
 # ================= EKRAN 2 =================
-# Wymuszenie otwarcia panelu bocznego poprzez styl CSS na Ekranie 2
-st.markdown(
-    """
-    <style>
-        section[data-testid="stSidebar"] {
-            transform: none !important;
-            visibility: visible !important;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 with st.sidebar:
     st.markdown("### Instrukcja do zadania")
     st.markdown(
@@ -292,7 +294,7 @@ with st.sidebar:
     )
 
 
-# --- REZERWACJA PACZKI Z MIKRO-TIMESTAMPEM ---
+# --- REZERWACJA PACZKI LOSOWYCH WIERSZY ---
 def reserve_batch(batch_size=20):
     target_col = st.session_state.target_column
     is_dedicated = st.session_state.is_dedicated_coder
@@ -313,7 +315,6 @@ def reserve_batch(batch_size=20):
             df[col] = ''
 
     free_indices = []
-    current_time = time.time()
 
     for idx, row in df.iterrows():
         if is_dedicated:
@@ -322,11 +323,10 @@ def reserve_batch(batch_size=20):
                 free_indices.append(idx)
         else:
             coder1_val = str(row['coder1']).strip()
-            res_user, res_time = parse_reservation(row['reserved_by'])
+            res_user = parse_reservation(row['reserved_by'])
 
             is_unannotated = not coder1_val or coder1_val in ['None', 'nan']
-            is_reservation_expired = (current_time - res_time) > RESERVATION_TIMEOUT_SECONDS
-            is_free_reservation = (res_user is None) or (res_user == user_name) or is_reservation_expired
+            is_free_reservation = (res_user is None) or (res_user == user_name)
 
             if is_unannotated and is_free_reservation:
                 free_indices.append(idx)
@@ -334,6 +334,7 @@ def reserve_batch(batch_size=20):
     if not free_indices:
         return pd.DataFrame()
 
+    # Losowanie wierszy
     if len(free_indices) <= batch_size:
         selected_indices = free_indices
     else:
@@ -341,9 +342,8 @@ def reserve_batch(batch_size=20):
 
     if not is_dedicated:
         reserved_col_idx = df.columns.get_loc('reserved_by') + 1
-        reservation_value = f"{user_name}|{int(current_time)}"
         cells_to_update = [
-            gspread.Cell(row=idx + 2, col=reserved_col_idx, value=reservation_value)
+            gspread.Cell(row=idx + 2, col=reserved_col_idx, value=user_name)
             for idx in selected_indices
         ]
         sheet.update_cells(cells_to_update)
