@@ -3,7 +3,6 @@ import streamlit as st
 import gspread
 import re
 import random
-import time
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
@@ -30,8 +29,16 @@ if st.session_state.view_mode == 'mobilna':
         :root {
             --base-font: clamp(1rem, 1.6vw, 1.35rem);
         }
-        html, body, [class*="css"] {
+        /* Styl głównego obszaru aplikacji – NIE dotyczy panelu bocznego,
+           aby po jego zwinięciu nie były widoczne litery. */
+        .block-container {
             font-size: var(--base-font);
+        }
+        /* Całkowite ukrycie zawartości zwiniętego panelu bocznego */
+        [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
+        [data-testid="stSidebar"][aria-expanded="false"] section {
+            visibility: hidden;
+            display: none;
         }
         .stButton > button {
             width: 100%;
@@ -87,7 +94,10 @@ def get_next_user_id():
     return f"id_{next_num}"
 
 def cleanup_my_reservations():
-    """Czyszczenie wyłącznie własnych rezerwacji użytkownika."""
+    """Usuwa wyłącznie WŁASNE rezerwacje bieżącego użytkownika z kolumny reserved_by
+    (np. po wylogowaniu). Rezerwacje innych osób pozostają nietknięte.
+    Czyści WSZYSTKIE wiersze zarezerwowane przez tego użytkownika, niezależnie od
+    tego, czy ma już ocenę w coder1."""
     user = st.session_state.get('user_name')
     if not user:
         return
@@ -98,20 +108,17 @@ def cleanup_my_reservations():
         return
 
     df = pd.DataFrame(records)
-
-    for col in ['coder1', 'reserved_by']:
-        if col not in df.columns:
-            df[col] = ''
+    if 'reserved_by' not in df.columns:
+        return
 
     reserved_col_idx = df.columns.get_loc('reserved_by') + 1
     cells_to_clear = []
 
     for idx, row in df.iterrows():
-        coder1_val = str(row['coder1']).strip()
         res_user = parse_reservation(row['reserved_by'])
 
-        # Jeżeli zarezerwowano przez bieżącego użytkownika i nie ma jeszcze oceny
-        if res_user == user and (not coder1_val or coder1_val in ['None', 'nan']):
+        # Wiersz zarezerwowany przez bieżącego użytkownika -> zwalniamy go
+        if res_user == user:
             cells_to_clear.append(
                 gspread.Cell(row=idx + 2, col=reserved_col_idx, value='')
             )
