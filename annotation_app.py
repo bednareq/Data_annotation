@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import gspread
 import random
+import altair as alt
 import extra_streamlit_components as stx
 from google.oauth2.service_account import Credentials
 
@@ -58,7 +59,7 @@ else:
     st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state=sidebar_state)
 
 
-# --- GOOGLE SHEETS CONNECTION (KESZOWANE DLA UNIKNIĘCIA BŁĘDÓW API) ---
+# --- GOOGLE SHEETS CONNECTION ---
 @st.cache_resource
 def get_gspread_client():
     scopes = [
@@ -91,11 +92,26 @@ def get_existing_columns():
     return [h.strip().lower() for h in headers]
 
 
-# --- OBSŁUGA COOKIES ---
-def get_cookie_manager():
-    return stx.CookieManager(key="annotator_cookie_manager")
+# --- POMOCNICZA FUNKCJA DO TWORZENIA WYKRESU KOŁOWEGO ---
+def make_pie_chart(dist_df, title_text):
+    """Tworzy prosty, estetyczny wykres kołowy przy użyciu Altair."""
+    df_reset = dist_df.reset_index()
 
-cookie_manager = get_cookie_manager()
+    df_filtered = df_reset[df_reset['Liczba'] > 0]
+    
+    if df_filtered.empty:
+        return None
+
+    chart = alt.Chart(df_filtered).mark_arc(innerRadius=0).encode(
+        theta=alt.Theta(field="Liczba", type="quantitative"),
+        color=alt.Color(field="Ocena", type="nominal", legend=alt.Legend(title="Ocena")),
+        tooltip=["Ocena", "Liczba"]
+    ).properties(
+        title=title_text,
+        width=250,
+        height=250
+    )
+    return chart
 
 
 # --- OBLICZENIA GAMYFIKACJI I STATYSTYK ---
@@ -129,20 +145,35 @@ def calculate_gamification_stats(current_user):
     user_count = int(user_row['count'].values[0]) if not user_row.empty else 0
     total_koders = len(coder_cols)
 
-    # Obliczanie rozkładu ocen użytkownika
-    user_series = df[current_user].astype(str).str.strip()
-    val_counts = user_series.value_counts()
-    
-    distribution = {
-        'Zgodne (1)': int(val_counts.get('1', 0)),
-        'Niezgodne (0)': int(val_counts.get('0', 0)),
-        'Brak kontekstu (K)': int(val_counts.get('K', 0)),
-        'Nie wiem (N)': int(val_counts.get('N', 0))
-    }
-    
-    dist_df = pd.DataFrame(list(distribution.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
+    # Top 3 koderów
+    top_3 = ranking_df.head(3).to_dict('records')
 
-    # Obliczanie procentu zgodności z innymi koderami
+    # 1. Obliczanie rozkładu ocen łącznego (cała historia użytkownika)
+    user_series = df[current_user].astype(str).str.strip()
+    val_counts_total = user_series.value_counts()
+    
+    dist_total = {
+        'Zgodne (1)': int(val_counts_total.get('1', 0)),
+        'Niezgodne (0)': int(val_counts_total.get('0', 0)),
+        'Brak kontekstu (K)': int(val_counts_total.get('K', 0)),
+        'Nie wiem (N)': int(val_counts_total.get('N', 0))
+    }
+    dist_total_df = pd.DataFrame(list(dist_total.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
+
+    # 2. Obliczanie rozkładu ocen z obecnej rundy (z sesji)
+    dist_session_df = pd.DataFrame()
+    if 'my_batch' in st.session_state and not st.session_state.my_batch.empty:
+        batch_series = st.session_state.my_batch[current_user].astype(str).str.strip()
+        val_counts_batch = batch_series.value_counts()
+        dist_session = {
+            'Zgodne (1)': int(val_counts_batch.get('1', 0)),
+            'Niezgodne (0)': int(val_counts_batch.get('0', 0)),
+            'Brak kontekstu (K)': int(val_counts_batch.get('K', 0)),
+            'Nie wiem (N)': int(val_counts_batch.get('N', 0))
+        }
+        dist_session_df = pd.DataFrame(list(dist_session.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
+
+    # Obliczanie procentu zgodności z innymi koderami (Majority Agreement Ratio)
     other_coder_cols = [c for c in coder_cols if c != current_user]
     user_votes = df[df[current_user].astype(str).str.strip().isin(['0', '1', 'K', 'N'])]
     
@@ -170,10 +201,12 @@ def calculate_gamification_stats(current_user):
         'user_count': user_count,
         'user_rank': user_rank,
         'total_koders': total_koders,
+        'top_3': top_3,
         'agreement_pct': agreement_pct,
         'comparable_rows': comparable_rows,
         'ranking_df': ranking_df,
-        'dist_df': dist_df
+        'dist_total_df': dist_total_df,
+        'dist_session_df': dist_session_df
     }
 
 
@@ -198,6 +231,7 @@ if not st.session_state.started:
         "Chcesz kontynuować pracę na innym urządzeniu? Po prostu wpisz ten sam nick ;)"
     )
 
+    cookie_manager = stx.CookieManager(key="annotator_cookie_manager")
     saved_nick = cookie_manager.get(cookie="annotator_nick") or ""
 
     user_nick_input = st.text_input(
@@ -441,22 +475,43 @@ if st.session_state.my_batch.empty:
 
         m1, m2, m3 = st.columns(3)
         m1.metric("Łącznie zakodowano", f"{stats['user_count']} wierszy")
-        m2.metric("Miejsce w rankingu", f"{stats['user_rank']} / {stats['total_koders']}")
+        m2.metric(
+            "Miejsce w rankingu aktywności", 
+            f"{stats['user_rank']} / {stats['total_koders']}", 
+            help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
+        )
         
         if stats['agreement_pct'] is not None:
-            m3.metric("Zgodność z innymi", f"{stats['agreement_pct']}%", help=f"Obliczono na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów.")
+            m3.metric(
+                "Zgodność z koderami", 
+                f"{stats['agreement_pct']}%", 
+                help=f"Zgodność z przeważającą oceną (Majority Agreement Ratio) obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+            )
         else:
-            m3.metric("Zgodność z innymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
+            m3.metric("Zgodność z koderami", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
 
-        col_graph, col_rank = st.columns(2)
-        with col_graph:
-            st.markdown("### Rozkład Twoich ocen")
-            st.bar_chart(stats['dist_df'])
+        # Wyświetlenie TOP 3 koderów
+        if stats['top_3']:
+            st.markdown("### TOP 3 najaktywniejszych koderów")
+            top_str = " | ".join([f"**{i+1}. {item['koder']}** ({item['count']} ocen)" for i, item in enumerate(stats['top_3'])])
+            st.markdown(top_str)
 
-        with col_rank:
-            st.markdown("### Ranking koderów")
-            display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Koder / Nick', 'count': 'Liczba ocen'})
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
+        col_pie1, col_pie2 = st.columns(2)
+        with col_pie1:
+            chart1 = make_pie_chart(stats['dist_session_df'], "Oceny w tej sesji")
+            if chart1:
+                st.altair_chart(chart1, use_container_width=True)
+            else:
+                st.write("Brak ocen w tej sesji.")
+
+        with col_pie2:
+            chart2 = make_pie_chart(stats['dist_total_df'], "Oceny łącznie (historia)")
+            if chart2:
+                st.altair_chart(chart2, use_container_width=True)
+
+        st.markdown("### Pełny ranking koderów (według liczby zakodowanych przykładów)")
+        display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Koder / Nick', 'count': 'Łącznie zakodowanych przykładów'})
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 else:
     unannotated_in_batch = st.session_state.my_batch[
@@ -471,12 +526,34 @@ else:
         stats = calculate_gamification_stats(target_col)
         if stats:
             col_m1, col_m2 = st.columns(2)
-            col_m1.metric("Miejsce w rankingu", f"{stats['user_rank']} z {stats['total_koders']}")
+            col_m1.metric(
+                "Miejsce w rankingu aktywności", 
+                f"{stats['user_rank']} z {stats['total_koders']}",
+                help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
+            )
             if stats['agreement_pct'] is not None:
-                col_m2.metric("Zgodność z koderami", f"{stats['agreement_pct']}%")
+                col_m2.metric(
+                    "Zgodność z koderami (Majority Agreement Ratio)", 
+                    f"{stats['agreement_pct']}%"
+                )
 
-            st.markdown("### Wykres Twoich ocen w tej sesji:")
-            st.bar_chart(stats['dist_df'])
+            # TOP 3 koderów po rundzie
+            if stats['top_3']:
+                st.markdown("### TOP 3 najaktywniejszych koderów")
+                top_str = " | ".join([f"**{i+1}. {item['koder']}** ({item['count']} ocen)" for i, item in enumerate(stats['top_3'])])
+                st.markdown(top_str)
+
+            st.markdown("### Rozkład ocen po tej rundzie:")
+            
+            col_pie1, col_pie2 = st.columns(2)
+            with col_pie1:
+                chart1 = make_pie_chart(stats['dist_session_df'], "Oceny w tej sesji")
+                if chart1:
+                    st.altair_chart(chart1, use_container_width=True)
+            with col_pie2:
+                chart2 = make_pie_chart(stats['dist_total_df'], "Oceny łącznie (historia)")
+                if chart2:
+                    st.altair_chart(chart2, use_container_width=True)
 
         st.write("Chcesz kontynuować?")
 
@@ -544,5 +621,5 @@ else:
         
         st.progress(
             progress_pct, 
-            text=f"Postęp w obecnej rundzie: **{current_item_idx} / {total_batch_items}**"
+            text=f"Postęp w obecnej rundzie: **{current_item_idx} / {total_batch_items}** ({int(progress_pct * 100)}%)"
         )
