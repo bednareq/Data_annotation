@@ -720,7 +720,7 @@ else:
                 top_3_names = ", ".join([f"**{item['koder']}**" for item in top_3])
                 st.warning(f"Świetny wynik! Podium jest w Twoim zasięgu — wystarczy przegonić {top_3_names}. Do dzieła!")
             else:
-                st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale... może czas pokazać wszystkim, gdzie ich miejsce? Co powiesz na kolejną rundę?")
+                st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale... może jednak chcesz pokazać tej trójce, gdzie ich miejsce? Co powiesz na kolejną rundę?")
 
             st.markdown("---")
             
@@ -758,9 +758,9 @@ else:
     else:
         # KOMUNIKAT DYNAMICZNY W TRAKCIE RUNDY O PRZEGONIENIU KOGOŚ Z TOP 3
         if st.session_state.overtaken_user and st.session_state.overtaken_target_rank:
-            rank_names = {1: "pierwszy/a", 2: "drugi/a", 3: "trzeci/a"}
-            target_rank_str = rank_names.get(st.session_state.overtaken_target_rank, "wyżej")
-            st.success(f"Właśnie przegoniłeś/aś **{st.session_state.overtaken_user}**! Jeszcze chwila i będziesz **{target_rank_str}**!")
+            rank_names = {1: "pierwszym", 2: "drugim", 3: "trzecim"}
+            target_rank_str = rank_names.get(st.session_state.overtaken_target_rank, "wyższym")
+            st.success(f"Dobra robota! **{st.session_state.overtaken_user}** został w tyle, i teraz to Ty jesteś na **{target_rank_str} miejscu w rankingu**!")
 
         current_row = unannotated_in_batch.iloc[0]
         actual_index = current_row.name
