@@ -538,7 +538,7 @@ else:
                     st.metric(
                         "Zgodność z pozostałymi osobami kodującymi", 
                         f"{stats['agreement_pct']}%",
-                        help=f"(Majority Agreement Ratio) - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                        help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                     )
                 else:
                     st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
