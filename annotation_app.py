@@ -58,7 +58,7 @@ else:
     st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state=sidebar_state)
 
 
-# --- GOOGLE SHEETS CONNECTION ---
+# --- GOOGLE SHEETS CONNECTION (KESZOWANE DLA UNIKNIĘCIA BŁĘDÓW API) ---
 @st.cache_resource
 def get_gspread_client():
     scopes = [
@@ -69,7 +69,9 @@ def get_gspread_client():
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
 
+@st.cache_resource
 def get_sheet():
+    """Zkeszowane pobieranie arkusza, które chroni przed limitem zapytań API."""
     client = get_gspread_client()
     return client.open(SPREADSHEET_NAME).sheet1
 
@@ -402,20 +404,16 @@ if 'my_batch' not in st.session_state:
 
 def save_annotation(row_index, value):
     sheet = get_sheet()
-    records = sheet.get_all_records()
-    if not records:
-        return
-
-    df_cols = list(records[0].keys())
     sheet_row_num = row_index + 2
-
     target_col = st.session_state.target_column
+
+    headers = sheet.row_values(1)
     
-    if target_col in df_cols:
-        target_col_idx = df_cols.index(target_col) + 1
-    else:
-        headers = sheet.row_values(1)
+    if target_col in headers:
         target_col_idx = headers.index(target_col) + 1
+    else:
+        target_col_idx = len(headers) + 1
+        sheet.update_cell(1, target_col_idx, target_col)
 
     sheet.update_cell(sheet_row_num, target_col_idx, str(value))
 
@@ -436,7 +434,6 @@ if st.session_state.my_batch.empty:
     st.header("Wszystkie przykłady zakodowane!")
     st.write("Dziękujemy! Brawo, ukończyłeś/aś wszystkie dostępne przykłady w bazie.")
 
-    # Podsumowanie i statystyki wyświetlane WYŁĄCZNIE na ekranie końcowym
     stats = calculate_gamification_stats(target_col)
     if stats:
         st.markdown("---")
@@ -471,7 +468,6 @@ else:
     if st.session_state.round_finished or unannotated_in_batch.empty:
         st.warning("Runda zakończona! Zakodowano porcję przykładów.")
         
-        # Wyświetlanie statystyk i wykresu po zakończeniu rundy
         stats = calculate_gamification_stats(target_col)
         if stats:
             col_m1, col_m2 = st.columns(2)
@@ -539,3 +535,14 @@ else:
         with col4:
             if st.button("Nie wiem", use_container_width=True):
                 save_annotation(actual_index, "N")
+
+        # --- PASEK POSTĘPU W RUNDZIE ---
+        st.markdown("---")
+        total_batch_items = len(st.session_state.my_batch)
+        current_item_idx = st.session_state.current_in_batch
+        progress_pct = min(current_item_idx / total_batch_items, 1.0)
+        
+        st.progress(
+            progress_pct, 
+            text=f"Postęp w obecnej rundzie: **{current_item_idx} / {total_batch_items}** ({int(progress_pct * 100)}%)"
+        )
