@@ -544,5 +544,5 @@ else:
         
         st.progress(
             progress_pct, 
-            text=f"Postęp w obecnej rundzie: **{current_item_idx} / {total_batch_items}** ({int(progress_pct * 100)}%)"
+            text=f"Postęp w obecnej rundzie: **{current_item_idx} / {total_batch_items}**"
         )
