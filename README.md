@@ -59,7 +59,7 @@ Po ukończeniu każdej rundy (lub na żądanie w panelu bocznym) wyświetlane je
 
 ---
 
-## Autor i afiliacja
+## Autor
 
 **Jakub Bednarek**  
 Wydział Matematyki i Informatyki  
