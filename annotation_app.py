@@ -7,7 +7,7 @@ import extra_streamlit_components as stx
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
-BASE_COLUMNS = ['word', 'definition', 'comment']  # Kolumny niebędące koderami
+BASE_COLUMNS = ['word', 'definition', 'comment']  # Kolumny niebędące osobami kodującymi
 
 # --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (ZACIĄGANE Z st.secrets) ---
 PASSWORDS = {
@@ -134,7 +134,7 @@ def calculate_gamification_stats(current_user):
     if current_user not in df.columns:
         return None
 
-    # Zliczanie zakodowanych wierszy dla każdego kodera
+    # Zliczanie zakodowanych wierszy dla każdej osoby kodującej
     counts = {}
     for col in coder_cols:
         valid_responses = df[col].astype(str).str.strip()
@@ -151,7 +151,7 @@ def calculate_gamification_stats(current_user):
     user_count = int(user_row['count'].values[0]) if not user_row.empty else 0
     total_koders = len(coder_cols)
 
-    # Top 3 koderów
+    # Top 3 osób kodujących
     top_3 = ranking_df.head(3).to_dict('records')
 
     # 1. Obliczanie rozkładu ocen łącznego (cała historia użytkownika)
@@ -179,7 +179,7 @@ def calculate_gamification_stats(current_user):
         }
         dist_session_df = pd.DataFrame(list(dist_session.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
 
-    # Obliczanie procentu zgodności z innymi koderami (Majority Agreement Ratio)
+    # Obliczanie procentu zgodności z innymi osobami kodującymi (Majority Agreement Ratio)
     other_coder_cols = [c for c in coder_cols if c != current_user]
     user_votes = df[df[current_user].astype(str).str.strip().isin(['0', '1', 'K', 'N'])]
     
@@ -218,7 +218,7 @@ def calculate_gamification_stats(current_user):
 
 # ================= EKRAN TRYBU: TYLKO STATYSTYKI =================
 if st.session_state.show_only_stats:
-    st.title(f"Statystyki użytkownika: {st.session_state.stats_user_nick}")
+    st.title(f"Statystyki osoby kodującej: {st.session_state.stats_user_nick}")
     
     with st.spinner("Pobieram statystyki z bazy..."):
         stats = calculate_gamification_stats(st.session_state.stats_user_nick)
@@ -238,10 +238,10 @@ if st.session_state.show_only_stats:
                 st.metric(
                     "Zgodność z pozostałymi osobami kodującymi", 
                     f"{stats['agreement_pct']}%",
-                    help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                    help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych osób kodujących, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                 )
             else:
-                st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
+                st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez inne osoby kodujące do porównania.")
 
         with col_right:
             if stats['top_3']:
@@ -325,7 +325,7 @@ if not st.session_state.started:
                 st.session_state.show_existing_warning = True
                 st.warning(
                     f"Nick **{clean_nick}** znajduje się już w bazie.\n\n"
-                    "Jeśli to Ty wracasz do kodowania z nowego urządzenia lub przeglądarki: kliknij przycisk poniżej, aby kontynuować.\n\n"
+                    "Jeśli wracasz do kodowania z nowego urządzenia lub przeglądarki: kliknij przycisk poniżej, aby kontynuować.\n\n"
                     "Jeśli jesteś nową osobą kodującą: zmień proszę swój nick (np. dodaj cyfrę), aby utworzyć dedykowaną Ci kolumnę."
                 )
                 
@@ -441,7 +441,7 @@ with st.sidebar:
         * `Zgodne z definicją`: Słowo zostało użyte w tekście zgodnie z **podaną** definicją.
         * `Niezgodne z definicją`: Słowo **nie** zostało użyte w tekście zgodnie z **podaną** definicją.
         * `Brak kontekstu`: Wybierz wtedy, gdy tekst jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
-        * `Nie wiem`: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
+        * `Nie wiem`: Wybierz wtedy, gdy mimo wystarczającego kontekstu masz **wątpliwości**, czy słowo jest użyte zgodnie z definicją.
         """
     )
 
@@ -484,7 +484,7 @@ with st.sidebar:
     )
 
 
-# --- POBIERANIE WIERSZY DLA DANEGO KODERA ---
+# --- POBIERANIE WIERSZY DLA DANEJ OSOBY KODUJĄCEJ ---
 def fetch_user_batch(batch_size=20):
     target_col = st.session_state.target_column
 
@@ -553,7 +553,7 @@ target_col = st.session_state.target_column
 if st.session_state.my_batch.empty:
     st.balloons()
     st.header("Wszystkie przykłady zakodowane!")
-    st.write("Dziękujemy! Brawo, ukończył_ś wszystkie dostępne przykłady w bazie.")
+    st.write("Dziękujemy! Brawo, ukończono wszystkie dostępne przykłady w bazie.")
 
     stats = calculate_gamification_stats(target_col)
     if stats:
@@ -571,7 +571,7 @@ if st.session_state.my_batch.empty:
             
             if stats['agreement_pct'] is not None:
                 st.metric(
-                    "Zgodność z koderami", 
+                    "Zgodność z pozostałymi osobami kodującymi", 
                     f"{stats['agreement_pct']}%", 
                     help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych osób kodujących, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                 )
@@ -598,7 +598,7 @@ if st.session_state.my_batch.empty:
                 st.altair_chart(chart2, use_container_width=True)
 
         st.markdown("### Pełny ranking osób kodujących")
-        display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Koder / Nick', 'count': 'Łącznie zakodowanych przykładów'})
+        display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Nick', 'count': 'Łącznie zakodowanych przykładów'})
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 else:
@@ -628,7 +628,7 @@ else:
                         help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych osób kodujących, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                     )
                 else:
-                    st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
+                    st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez inne osoby kodujące do porównania.")
 
             with col_right:
                 if stats['top_3']:
