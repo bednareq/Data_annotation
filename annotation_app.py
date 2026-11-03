@@ -232,7 +232,7 @@ with st.sidebar:
     st.markdown("### Instrukcja do zadania")
     st.markdown(
         """
-        **Zadanie:** Określ, czy **wskazane słowo** zostało użyte w widocznym na ekranie **tekście** zgodnie z **podaną definicją**\n.     
+        **Zadanie:** Określ, czy **wskazane słowo** zostało użyte w widocznym na ekranie **tekście** zgodnie z **podaną definicją**\n\n.     
         **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
         """
     )
