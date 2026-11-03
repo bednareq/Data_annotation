@@ -2,6 +2,7 @@ import pandas as pd
 import streamlit as st
 import gspread
 import random
+import re
 import altair as alt
 import extra_streamlit_components as stx
 from google.oauth2.service_account import Credentials
@@ -609,7 +610,7 @@ else:
     ]
 
     if st.session_state.round_finished or unannotated_in_batch.empty:
-        st.warning("Runda zakończona. Zakodowano 20 przykładów!")
+        st.warning("Runda zakończona, zakodowano 20 przykładów!")
         
         stats = calculate_gamification_stats(target_col)
         if stats:
@@ -667,9 +668,18 @@ else:
         current_row = unannotated_in_batch.iloc[0]
         actual_index = current_row.name
 
-        word = current_row.get('word', '')
+        word = str(current_row.get('word', '')).strip()
         definition = current_row.get('definition', '')
-        comment = current_row.get('comment', '')
+        comment = str(current_row.get('comment', ''))
+
+        # DYNAMICZNE PODŚWIETLANIE SŁOWA I JEGO ODMIENIONYCH FORM
+        highlighted_comment = comment
+        if word:
+            # Tworzymy rdzeń słowa (odcinamy ost. literę jeśli długość > 3)
+            stem = word[:-1] if len(word) > 3 else word
+            # Wzorzec dopasowuje słowo rozpoczynające się od rdzenia z granicą słowa \b
+            pattern = re.compile(r'\b' + re.escape(stem) + r'\w*', re.IGNORECASE)
+            highlighted_comment = pattern.sub(lambda m: f"<b>{m.group(0)}</b>", comment)
 
         st.markdown(
             f"<div style='font-size:1.1rem;'><b>Słowo:</b>&nbsp; <span style='font-weight:normal;'>{word}</span></div>",
@@ -684,7 +694,7 @@ else:
             unsafe_allow_html=True
         )
         with st.container(border=True):
-            st.write(f"{comment}")
+            st.markdown(highlighted_comment, unsafe_allow_html=True)
 
         st.markdown("### Wybierz ocenę")
 
