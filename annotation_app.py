@@ -352,6 +352,10 @@ if not st.session_state.started:
         elif not safe_nick:
             st.error("Proszę podać nick przed rozpoczęciem!")
             st.session_state.show_existing_warning = False
+        # BLOKADA: Zabraniamy wejścia na konta zastrzeżone przez zwykłe pole z nickiem
+        elif safe_nick in PASSWORDS.keys():
+            st.error(f"Nick **{clean_nick}** jest zastrzeżony. Zaloguj się z użyciem hasła w Panelu Badacza (panel boczny).")
+            st.session_state.show_existing_warning = False
         else:
             existing_cols = get_existing_columns()
             
@@ -421,10 +425,16 @@ if not st.session_state.started:
         if selected_login:
             login_pw = st.text_input(f"Hasło dla {selected_login}:", type="password")
             if st.button("Zaloguj", use_container_width=True, type="primary"):
-                if login_pw == (PASSWORDS['bednarek'] if selected_login == 'Bednarek' else PASSWORDS['janowski']):
-                    st.session_state.dedicated_login = 'bednarek' if selected_login == 'Bednarek' else 'janowski'
-                    ensure_user_column_exists(st.session_state.dedicated_login)
-                    st.success(f"Zalogowano jako {selected_login}.")
+                target_user = 'bednarek' if selected_login == 'Bednarek' else 'janowski'
+                if login_pw == PASSWORDS[target_user]:
+                    # POPRAWKA 2: Przenosimy bezpośrednio do zadania i odświeżamy stronę
+                    st.session_state.dedicated_login = target_user
+                    st.session_state.user_name = target_user
+                    st.session_state.target_column = target_user
+                    st.session_state.started = True
+                    ensure_user_column_exists(target_user)
+                    cookie_manager.set("annotator_nick", target_user, max_age=30*24*3600)
+                    st.rerun()
                 else:
                     st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
 
@@ -746,7 +756,7 @@ else:
         with col_continue:
             btn_label = "Zacznij nową rundę!"
             if stats and stats['user_rank'] == 1:
-                btn_label = "Nie ma co spoczywać na laurach, nie pozwól się zdeklasować!"
+                btn_label = "Nie ma co osiadać na laurach, nie pozwól się zdeklasować!"
 
             if st.button(btn_label, use_container_width=True, type="primary"):
                 with st.spinner("Szukam nowej partii..."):
