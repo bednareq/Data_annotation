@@ -22,9 +22,15 @@ if 'view_mode' not in st.session_state:
 if 'started' not in st.session_state:
     st.session_state.started = False
 
+if 'show_only_stats' not in st.session_state:
+    st.session_state.show_only_stats = False
+
+if 'stats_user_nick' not in st.session_state:
+    st.session_state.stats_user_nick = ''
+
 
 # --- DYNAMICZNA KONFIGURACJA STRONY ---
-sidebar_state = "expanded" if st.session_state.started else "collapsed"
+sidebar_state = "expanded" if st.session_state.started or st.session_state.show_only_stats else "collapsed"
 
 if st.session_state.view_mode == 'mobilna':
     st.set_page_config(page_title="Slang czy nie slang?", layout="wide", initial_sidebar_state=sidebar_state)
@@ -210,6 +216,61 @@ def calculate_gamification_stats(current_user):
     }
 
 
+# ================= EKRAN TRYBU: TYLKO STATYSTYKI =================
+if st.session_state.show_only_stats:
+    st.title(f"Statystyki użytkownika: {st.session_state.stats_user_nick}")
+    
+    with st.spinner("Pobieram statystyki z bazy..."):
+        stats = calculate_gamification_stats(st.session_state.stats_user_nick)
+
+    if not stats:
+        st.warning(f"Nie znaleziono w bazie zakodowanych przykładów dla nicku: **{st.session_state.stats_user_nick}**.")
+    else:
+        col_left, col_right = st.columns(2)
+        
+        with col_left:
+            st.metric(
+                "Miejsce w rankingu aktywności", 
+                f"{stats['user_rank']} z {stats['total_koders']}",
+                help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
+            )
+            if stats['agreement_pct'] is not None:
+                st.metric(
+                    "Zgodność z pozostałymi osobami kodującymi", 
+                    f"{stats['agreement_pct']}%",
+                    help=f"(Majority Agreement Ratio) - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                )
+            else:
+                st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
+
+        with col_right:
+            if stats['top_3']:
+                st.markdown("### TOP 3 najaktywniejszych osób kodujących")
+                for i, item in enumerate(stats['top_3']):
+                    st.markdown(f"**{i+1}. {item['koder']}** — {item['count']} ocen")
+
+        st.markdown("---")
+        st.markdown("### Rozkład ocen:")
+        
+        chart_total = make_pie_chart(stats['dist_total_df'], "Wszystkie Twoje oceny")
+        if chart_total:
+            st.altair_chart(chart_total, use_container_width=True)
+        else:
+            st.info("Brak ocen w historii dla tego nicku.")
+
+        st.markdown("### Pełny ranking koderów (według liczby zakodowanych przykładów)")
+        display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Koder / Nick', 'count': 'Łącznie zakodowanych przykładów'})
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+    if st.button("Wróć do strony głównej", type="primary"):
+        st.session_state.show_only_stats = False
+        st.session_state.stats_user_nick = ''
+        st.rerun()
+
+    st.stop()
+
+
 # ================= EKRAN 1: STARTOWY =================
 if not st.session_state.started:
     st.title("Slang czy nie slang? Oto jest pytanie")
@@ -289,6 +350,24 @@ if not st.session_state.started:
                 st.rerun()
 
     with st.sidebar:
+        st.markdown("### Zobacz moje statystyki")
+        stats_nick_input = st.text_input(
+            "Wpisz swój nick:",
+            value=saved_nick,
+            key="stats_nick_input_field",
+            placeholder="np. Kuba"
+        )
+        if st.button("Pokaż statystyki", use_container_width=True):
+            clean_stats_nick = stats_nick_input.strip()
+            safe_stats_nick = "".join(c for c in clean_stats_nick if c.isalnum() or c in ('_', '-')).lower()
+            if not safe_stats_nick:
+                st.error("Podaj nick!")
+            else:
+                st.session_state.stats_user_nick = safe_stats_nick
+                st.session_state.show_only_stats = True
+                st.rerun()
+
+        st.markdown("---")
         st.markdown("### Panel badacza")
         col_login_b, col_login_j = st.columns(2)
         with col_login_b:
@@ -375,7 +454,7 @@ with st.sidebar:
     st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
 
     if st.button("Wyloguj się"):
-        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started', 'show_existing_warning']:
+        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started', 'show_existing_warning', 'show_only_stats', 'stats_user_nick']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
