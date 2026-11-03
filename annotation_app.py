@@ -218,7 +218,7 @@ def calculate_gamification_stats(current_user):
 
 # ================= EKRAN TRYBU: TYLKO STATYSTYKI =================
 if st.session_state.show_only_stats:
-    st.title(f"Statystyki osoby kodującej: {st.session_state.stats_user_nick}")
+    st.title(f"Statystyki dla: {st.session_state.stats_user_nick}")
     
     with st.spinner("Pobieram statystyki z bazy..."):
         stats = calculate_gamification_stats(st.session_state.stats_user_nick)
@@ -257,7 +257,7 @@ if st.session_state.show_only_stats:
         else:
             st.info("Brak ocen w historii dla tego nicku.")
 
-        st.markdown("### Pełny ranking osób kodujących")
+        st.markdown("### Pełny ranking")
         display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Nick', 'count': 'Łącznie zakodowanych przykładów'})
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
@@ -597,7 +597,7 @@ if st.session_state.my_batch.empty:
             if chart2:
                 st.altair_chart(chart2, use_container_width=True)
 
-        st.markdown("### Pełny ranking osób kodujących")
+        st.markdown("### Pełny ranking")
         display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Nick', 'count': 'Łącznie zakodowanych przykładów'})
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
