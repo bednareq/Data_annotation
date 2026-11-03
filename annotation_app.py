@@ -609,7 +609,7 @@ else:
     ]
 
     if st.session_state.round_finished or unannotated_in_batch.empty:
-        st.warning("Runda zakończona, zakodowano 20 przykładów!")
+        st.warning("Runda zakończona. Zakodowano 20 przykładów!")
         
         stats = calculate_gamification_stats(target_col)
         if stats:
