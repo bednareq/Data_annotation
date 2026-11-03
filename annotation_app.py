@@ -473,28 +473,29 @@ if st.session_state.my_batch.empty:
         st.markdown("---")
         st.subheader("Twoje podsumowanie i ranking")
 
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Łącznie zakodowano", f"{stats['user_count']} wierszy")
-        m2.metric(
-            "Miejsce w rankingu aktywności", 
-            f"{stats['user_rank']} / {stats['total_koders']}", 
-            help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
-        )
-        
-        if stats['agreement_pct'] is not None:
-            m3.metric(
-                "Zgodność z koderami", 
-                f"{stats['agreement_pct']}%", 
-                help=f"Zgodność z przeważającą oceną (Majority Agreement Ratio) obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
-            )
-        else:
-            m3.metric("Zgodność z koderami", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
+        col_left, col_right = st.columns(2)
 
-        # Wyświetlenie TOP 3 koderów
-        if stats['top_3']:
-            st.markdown("### TOP 3 najaktywniejszych koderów")
-            top_str = " | ".join([f"**{i+1}. {item['koder']}** ({item['count']} ocen)" for i, item in enumerate(stats['top_3'])])
-            st.markdown(top_str)
+        with col_left:
+            st.metric(
+                "Miejsce w rankingu aktywności", 
+                f"{stats['user_rank']} / {stats['total_koders']}", 
+                help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
+            )
+            
+            if stats['agreement_pct'] is not None:
+                st.metric(
+                    "Zgodność z koderami", 
+                    f"{stats['agreement_pct']}%", 
+                    help=f"Zgodność z przeważającą oceną (Majority Agreement Ratio) obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                )
+            else:
+                st.metric("Zgodność z koderami", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
+
+        with col_right:
+            if stats['top_3']:
+                st.markdown("### TOP 3 najaktywniejszych koderów")
+                for i, item in enumerate(stats['top_3']):
+                    st.markdown(f"**{i+1}. {item['koder']}** — {item['count']} ocen")
 
         col_pie1, col_pie2 = st.columns(2)
         with col_pie1:
@@ -525,23 +526,25 @@ else:
         
         stats = calculate_gamification_stats(target_col)
         if stats:
-            col_m1, col_m2 = st.columns(2)
-            col_m1.metric(
-                "Miejsce w rankingu aktywności", 
-                f"{stats['user_rank']} z {stats['total_koders']}",
-                help="Ranking według liczby zakodowanych przykładów"
-            )
-            if stats['agreement_pct'] is not None:
-                col_m2.metric(
-                    "Zgodność z pozostałymi osobami kodującymi (Majority Agreement Ratio)", 
-                    f"{stats['agreement_pct']}%"
+            col_left, col_right = st.columns(2)
+            
+            with col_left:
+                st.metric(
+                    "Miejsce w rankingu aktywności", 
+                    f"{stats['user_rank']} z {stats['total_koders']}",
+                    help="Ranking według liczby zakodowanych przykładów"
                 )
+                if stats['agreement_pct'] is not None:
+                    st.metric(
+                        "Zgodność z pozostałymi osobami kodującymi (Majority Agreement Ratio)", 
+                        f"{stats['agreement_pct']}%"
+                    )
 
-            # TOP 3 koderów po rundzie
-            if stats['top_3']:
-                st.markdown("### TOP 3 najaktywniejszych osób kodujących")
-                top_str = " | ".join([f"**{i+1}. {item['koder']}** ({item['count']} ocen)" for i, item in enumerate(stats['top_3'])])
-                st.markdown(top_str)
+            with col_right:
+                if stats['top_3']:
+                    st.markdown("### TOP 3 najaktywniejszych osób kodujących")
+                    for i, item in enumerate(stats['top_3']):
+                        st.markdown(f"**{i+1}. {item['koder']}** — {item['count']} ocen")
 
             st.markdown("### Rozkład ocen po tej rundzie:")
             
@@ -551,7 +554,7 @@ else:
                 if chart1:
                     st.altair_chart(chart1, use_container_width=True)
             with col_pie2:
-                chart2 = make_pie_chart(stats['dist_total_df'], "Wsyztskie Twoje oceny")
+                chart2 = make_pie_chart(stats['dist_total_df'], "Wszystkie Twoje oceny")
                 if chart2:
                     st.altair_chart(chart2, use_container_width=True)
 
