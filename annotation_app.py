@@ -112,7 +112,7 @@ if not st.session_state.started:
     st.markdown("---")
     st.markdown("### Logowanie")
     st.markdown(
-    "Jeśli kodujesz pierwszy raz, wpisz wybrany nick (np. imię) – przeglądarka zapamięta Cię na tym urządzeniu!\n"  
+    "Jeśli kodujesz pierwszy raz, wpisz wybrany nick (np. imię) – przeglądarka zapamięta Cię na tym urządzeniu!\n\n"   
     "Chcesz kontynuować pracę na innym urządzeniu? Po prostu wpisz ten sam nick ;)"
         )
 
