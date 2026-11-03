@@ -75,37 +75,58 @@ else:
     st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state=sidebar_state)
 
 
+# --- POMOCNICZA FUNKCJA OBSŁUGI BŁĘDU LIMITÓW ---
+def handle_api_error():
+    st.error(
+        "Kurczaczki... kodowanie okazało się tak wciągającą zabawą, że w tym samym momencie rzuciło się na nie za dużo osób.\n\n"
+        "Wpadniesz do nas ponownie za chwilkę, jak darmowe limity od Google złapią oddech?"
+    )
+    st.stop()
+
+
 # --- GOOGLE SHEETS CONNECTION ---
 @st.cache_resource
 def get_gspread_client():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    return gspread.authorize(credentials)
+    try:
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        return gspread.authorize(credentials)
+    except Exception:
+        handle_api_error()
 
 @st.cache_resource
 def get_sheet():
-    """Zkeszowane pobieranie arkusza, które chroni przed limitem zapytań API."""
-    client = get_gspread_client()
-    return client.open(SPREADSHEET_NAME).sheet1
+    """Zkeszowane pobieranie arkusza z obsługą błędów przekroczenia limitów API."""
+    try:
+        client = get_gspread_client()
+        return client.open(SPREADSHEET_NAME).sheet1
+    except Exception:
+        handle_api_error()
 
 def ensure_user_column_exists(user_col_name):
     """Sprawdza, czy kolumna dla użytkownika istnieje w arkuszu. Jeśli nie – tworzy ją w pierwszym wierszu."""
-    sheet = get_sheet()
-    headers = sheet.row_values(1)
-    
-    if user_col_name not in headers:
-        new_col_idx = len(headers) + 1
-        sheet.update_cell(1, new_col_idx, user_col_name)
+    try:
+        sheet = get_sheet()
+        headers = sheet.row_values(1)
+        
+        if user_col_name not in headers:
+            new_col_idx = len(headers) + 1
+            sheet.update_cell(1, new_col_idx, user_col_name)
+    except Exception:
+        handle_api_error()
 
 def get_existing_columns():
     """Zwraca listę nagłówków z pierwszego wiersza arkusza (sprowadzonych do małych liter)."""
-    sheet = get_sheet()
-    headers = sheet.row_values(1)
-    return [h.strip().lower() for h in headers]
+    try:
+        sheet = get_sheet()
+        headers = sheet.row_values(1)
+        return [h.strip().lower() for h in headers]
+    except Exception:
+        handle_api_error()
 
 
 # --- POMOCNICZA FUNKCJA DO TWORZENIA WYKRESU KOŁOWEGO ---
@@ -132,98 +153,101 @@ def make_pie_chart(dist_df, title_text):
 
 # --- OBLICZENIA GAMYFIKACJI I STATYSTYK ---
 def calculate_gamification_stats(current_user):
-    sheet = get_sheet()
-    records = sheet.get_all_records()
-    if not records:
-        return None
+    try:
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+        if not records:
+            return None
 
-    df = pd.DataFrame(records)
-    
-    coder_cols = [c for c in df.columns if c.lower() not in BASE_COLUMNS]
-    
-    if current_user not in df.columns:
-        return None
+        df = pd.DataFrame(records)
+        
+        coder_cols = [c for c in df.columns if c.lower() not in BASE_COLUMNS]
+        
+        if current_user not in df.columns:
+            return None
 
-    # Zliczanie zakodowanych wierszy dla każdej osoby kodującej
-    counts = {}
-    for col in coder_cols:
-        valid_responses = df[col].astype(str).str.strip()
-        count = valid_responses[~valid_responses.isin(['', 'None', 'nan'])].count()
-        counts[col] = count
+        # Zliczanie zakodowanych wierszy dla każdej osoby kodującej
+        counts = {}
+        for col in coder_cols:
+            valid_responses = df[col].astype(str).str.strip()
+            count = valid_responses[~valid_responses.isin(['', 'None', 'nan'])].count()
+            counts[col] = count
 
-    # Tworzenie rankingu
-    ranking_df = pd.DataFrame(list(counts.items()), columns=['koder', 'count'])
-    ranking_df = ranking_df.sort_values(by='count', ascending=False).reset_index(drop=True)
-    ranking_df['rank'] = ranking_df.index + 1
+        # Tworzenie rankingu
+        ranking_df = pd.DataFrame(list(counts.items()), columns=['koder', 'count'])
+        ranking_df = ranking_df.sort_values(by='count', ascending=False).reset_index(drop=True)
+        ranking_df['rank'] = ranking_df.index + 1
 
-    user_row = ranking_df[ranking_df['koder'] == current_user]
-    user_rank = int(user_row['rank'].values[0]) if not user_row.empty else None
-    user_count = int(user_row['count'].values[0]) if not user_row.empty else 0
-    total_koders = len(coder_cols)
+        user_row = ranking_df[ranking_df['koder'] == current_user]
+        user_rank = int(user_row['rank'].values[0]) if not user_row.empty else None
+        user_count = int(user_row['count'].values[0]) if not user_row.empty else 0
+        total_koders = len(coder_cols)
 
-    # Top 3 osób kodujących
-    top_3 = ranking_df.head(3).to_dict('records')
+        # Top 3 osób kodujących
+        top_3 = ranking_df.head(3).to_dict('records')
 
-    # 1. Obliczanie rozkładu ocen łącznego (cała historia użytkownika)
-    user_series = df[current_user].astype(str).str.strip()
-    val_counts_total = user_series.value_counts()
-    
-    dist_total = {
-        'Zgodne (1)': int(val_counts_total.get('1', 0)),
-        'Niezgodne (0)': int(val_counts_total.get('0', 0)),
-        'Brak kontekstu (K)': int(val_counts_total.get('K', 0)),
-        'Nie wiem (N)': int(val_counts_total.get('N', 0))
-    }
-    dist_total_df = pd.DataFrame(list(dist_total.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
-
-    # 2. Obliczanie rozkładu ocen z obecnej rundy (z sesji)
-    dist_session_df = pd.DataFrame()
-    if 'my_batch' in st.session_state and not st.session_state.my_batch.empty:
-        batch_series = st.session_state.my_batch[current_user].astype(str).str.strip()
-        val_counts_batch = batch_series.value_counts()
-        dist_session = {
-            'Zgodne (1)': int(val_counts_batch.get('1', 0)),
-            'Niezgodne (0)': int(val_counts_batch.get('0', 0)),
-            'Brak kontekstu (K)': int(val_counts_batch.get('K', 0)),
-            'Nie wiem (N)': int(val_counts_batch.get('N', 0))
+        # 1. Obliczanie rozkładu ocen łącznego (cała historia użytkownika)
+        user_series = df[current_user].astype(str).str.strip()
+        val_counts_total = user_series.value_counts()
+        
+        dist_total = {
+            'Zgodne (1)': int(val_counts_total.get('1', 0)),
+            'Niezgodne (0)': int(val_counts_total.get('0', 0)),
+            'Brak kontekstu (K)': int(val_counts_total.get('K', 0)),
+            'Nie wiem (N)': int(val_counts_total.get('N', 0))
         }
-        dist_session_df = pd.DataFrame(list(dist_session.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
+        dist_total_df = pd.DataFrame(list(dist_total.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
 
-    # Obliczanie procentu zgodności z innymi osobami kodującymi (Majority Agreement Ratio)
-    other_coder_cols = [c for c in coder_cols if c != current_user]
-    user_votes = df[df[current_user].astype(str).str.strip().isin(['0', '1', 'K', 'N'])]
-    
-    agreements = 0
-    comparable_rows = 0
+        # 2. Obliczanie rozkładu ocen z obecnej rundy (z sesji)
+        dist_session_df = pd.DataFrame()
+        if 'my_batch' in st.session_state and not st.session_state.my_batch.empty:
+            batch_series = st.session_state.my_batch[current_user].astype(str).str.strip()
+            val_counts_batch = batch_series.value_counts()
+            dist_session = {
+                'Zgodne (1)': int(val_counts_batch.get('1', 0)),
+                'Niezgodne (0)': int(val_counts_batch.get('0', 0)),
+                'Brak kontekstu (K)': int(val_counts_batch.get('K', 0)),
+                'Nie wiem (N)': int(val_counts_batch.get('N', 0))
+            }
+            dist_session_df = pd.DataFrame(list(dist_session.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
 
-    for _, row in user_votes.iterrows():
-        my_val = str(row[current_user]).strip()
+        # Obliczanie procentu zgodności z innymi osobami kodującymi (Majority Agreement Ratio)
+        other_coder_cols = [c for c in coder_cols if c != current_user]
+        user_votes = df[df[current_user].astype(str).str.strip().isin(['0', '1', 'K', 'N'])]
         
-        other_vals = []
-        for c in other_coder_cols:
-            val = str(row[c]).strip()
-            if val and val not in ['None', 'nan']:
-                other_vals.append(val)
-        
-        if other_vals:
-            comparable_rows += 1
-            most_common = pd.Series(other_vals).mode()[0]
-            if my_val == most_common:
-                agreements += 1
+        agreements = 0
+        comparable_rows = 0
 
-    agreement_pct = round((agreements / comparable_rows) * 100, 1) if comparable_rows > 0 else None
+        for _, row in user_votes.iterrows():
+            my_val = str(row[current_user]).strip()
+            
+            other_vals = []
+            for c in other_coder_cols:
+                val = str(row[c]).strip()
+                if val and val not in ['None', 'nan']:
+                    other_vals.append(val)
+            
+            if other_vals:
+                comparable_rows += 1
+                most_common = pd.Series(other_vals).mode()[0]
+                if my_val == most_common:
+                    agreements += 1
 
-    return {
-        'user_count': user_count,
-        'user_rank': user_rank,
-        'total_koders': total_koders,
-        'top_3': top_3,
-        'agreement_pct': agreement_pct,
-        'comparable_rows': comparable_rows,
-        'ranking_df': ranking_df,
-        'dist_total_df': dist_total_df,
-        'dist_session_df': dist_session_df
-    }
+        agreement_pct = round((agreements / comparable_rows) * 100, 1) if comparable_rows > 0 else None
+
+        return {
+            'user_count': user_count,
+            'user_rank': user_rank,
+            'total_koders': total_koders,
+            'top_3': top_3,
+            'agreement_pct': agreement_pct,
+            'comparable_rows': comparable_rows,
+            'ranking_df': ranking_df,
+            'dist_total_df': dist_total_df,
+            'dist_session_df': dist_session_df
+        }
+    except Exception:
+        handle_api_error()
 
 
 # ================= EKRAN TRYBU: TYLKO STATYSTYKI =================
@@ -496,34 +520,37 @@ with st.sidebar:
 
 # --- POBIERANIE WIERSZY DLA DANEJ OSOBY KODUJĄCEJ ---
 def fetch_user_batch(batch_size=20):
-    target_col = st.session_state.target_column
+    try:
+        target_col = st.session_state.target_column
 
-    sheet = get_sheet()
-    records = sheet.get_all_records()
-    if not records:
-        return pd.DataFrame()
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+        if not records:
+            return pd.DataFrame()
 
-    df = pd.DataFrame(records)
+        df = pd.DataFrame(records)
 
-    if target_col not in df.columns:
-        df[target_col] = ''
+        if target_col not in df.columns:
+            df[target_col] = ''
 
-    free_indices = []
+        free_indices = []
 
-    for idx, row in df.iterrows():
-        val = str(row[target_col]).strip()
-        if not val or val in ['None', 'nan']:
-            free_indices.append(idx)
+        for idx, row in df.iterrows():
+            val = str(row[target_col]).strip()
+            if not val or val in ['None', 'nan']:
+                free_indices.append(idx)
 
-    if not free_indices:
-        return pd.DataFrame()
+        if not free_indices:
+            return pd.DataFrame()
 
-    if len(free_indices) <= batch_size:
-        selected_indices = free_indices
-    else:
-        selected_indices = random.sample(free_indices, batch_size)
+        if len(free_indices) <= batch_size:
+            selected_indices = free_indices
+        else:
+            selected_indices = random.sample(free_indices, batch_size)
 
-    return df.loc[selected_indices].copy()
+        return df.loc[selected_indices].copy()
+    except Exception:
+        handle_api_error()
 
 
 if 'my_batch' not in st.session_state:
@@ -534,50 +561,53 @@ if 'my_batch' not in st.session_state:
 
 
 def save_annotation(row_index, value):
-    sheet = get_sheet()
-    sheet_row_num = row_index + 2
-    target_col = st.session_state.target_column
+    try:
+        sheet = get_sheet()
+        sheet_row_num = row_index + 2
+        target_col = st.session_state.target_column
 
-    headers = sheet.row_values(1)
-    
-    if target_col in headers:
-        target_col_idx = headers.index(target_col) + 1
-    else:
-        target_col_idx = len(headers) + 1
-        sheet.update_cell(1, target_col_idx, target_col)
-
-    sheet.update_cell(sheet_row_num, target_col_idx, str(value))
-
-    st.session_state.my_batch.loc[row_index, target_col] = str(value)
-    st.session_state.current_in_batch += 1
-
-    # PRZED ZAPISANIEM POBIERAMY OBECNĄ POZYCJĘ I RANKING
-    prev_stats = calculate_gamification_stats(target_col)
-    if prev_stats:
-        st.session_state.last_rank = prev_stats['user_rank']
-
-    if st.session_state.current_in_batch >= len(st.session_state.my_batch):
-        st.session_state.round_finished = True
-
-    # SPRAWDZENIE CZY PRZEGONIŁO KOGOŚ Z TOP 3
-    new_stats = calculate_gamification_stats(target_col)
-    if new_stats and st.session_state.last_rank:
-        new_rank = new_stats['user_rank']
-        prev_rank = st.session_state.last_rank
+        headers = sheet.row_values(1)
         
-        # Jeśli awansowaliśmy na pozycję 1, 2 lub 3 z wyższej pozycji
-        if new_rank < prev_rank and new_rank <= 3:
-            ranking_df = new_stats['ranking_df']
-            # Osoba przegoniona znajduje się obecnie o jedno miejsce niżej
-            overtaken_row = ranking_df[ranking_df['rank'] == new_rank + 1]
-            if not overtaken_row.empty:
-                overtaken_nick = overtaken_row['koder'].values[0]
-                st.session_state.overtaken_user = overtaken_nick
-                st.session_state.overtaken_target_rank = new_rank
-        
-        st.session_state.last_rank = new_rank
+        if target_col in headers:
+            target_col_idx = headers.index(target_col) + 1
+        else:
+            target_col_idx = len(headers) + 1
+            sheet.update_cell(1, target_col_idx, target_col)
 
-    st.rerun()
+        sheet.update_cell(sheet_row_num, target_col_idx, str(value))
+
+        st.session_state.my_batch.loc[row_index, target_col] = str(value)
+        st.session_state.current_in_batch += 1
+
+        # PRZED ZAPISANIEM POBIERAMY OBECNĄ POZYCJĘ I RANKING
+        prev_stats = calculate_gamification_stats(target_col)
+        if prev_stats:
+            st.session_state.last_rank = prev_stats['user_rank']
+
+        if st.session_state.current_in_batch >= len(st.session_state.my_batch):
+            st.session_state.round_finished = True
+
+        # SPRAWDZENIE CZY PRZEGONIŁO KOGOŚ Z TOP 3
+        new_stats = calculate_gamification_stats(target_col)
+        if new_stats and st.session_state.last_rank:
+            new_rank = new_stats['user_rank']
+            prev_rank = st.session_state.last_rank
+            
+            # Jeśli awansowaliśmy na pozycję 1, 2 lub 3 z wyższej pozycji
+            if new_rank < prev_rank and new_rank <= 3:
+                ranking_df = new_stats['ranking_df']
+                # Osoba przegoniona znajduje się obecnie o jedno miejsce niżej
+                overtaken_row = ranking_df[ranking_df['rank'] == new_rank + 1]
+                if not overtaken_row.empty:
+                    overtaken_nick = overtaken_row['koder'].values[0]
+                    st.session_state.overtaken_user = overtaken_nick
+                    st.session_state.overtaken_target_rank = new_rank
+            
+            st.session_state.last_rank = new_rank
+
+        st.rerun()
+    except Exception:
+        handle_api_error()
 
 
 # --- INTERFEJS ADNOTATORA ---
@@ -673,19 +703,21 @@ else:
                     for i, item in enumerate(stats['top_3']):
                         st.markdown(f"**{i+1}. {item['koder']}** — {item['count']} ocen")
 
-            # KOMUNIKAT MOTYWACYJNY W ŻÓŁTYM PASU – UMIESZCZONY BEZPOŚREDNIO POD RANKIENGEM
+            # KOMUNIKAT MOTYWACYJNY W ŻÓŁTYM PASKU POD RANKINGIEM
             if user_rank == 1:
-                st.warning("WOW! Świetna robota, konkurencja nie ma z Tobą szans!")
+                st.warning("WOW! Świetna robota – konkurencja nie ma z Tobą szans!")
             elif user_rank == 2:
                 user_1st = ranking_df[ranking_df['rank'] == 1]['koder'].values[0]
-                st.warning(f"Tak blisko! Jeszcze chwilę i przegonisz **{user_1st}**. Nie ma co się teraz poddawać!")
+                st.warning(f"Szczyt jest lada moment! Jeszcze chwila i zastąpisz **{user_1st}**. Nie zwalniaj tempa!")
             elif user_rank == 3:
                 user_1st = ranking_df[ranking_df['rank'] == 1]['koder'].values[0]
                 user_2nd = ranking_df[ranking_df['rank'] == 2]['koder'].values[0]
-                st.warning(f"Brawo, to już podium! To co? Jeszcze parę przykładów, żeby przegonić **{user_1st}** i **{user_2nd}**?")
-            else:
+                st.warning(f"Brawo, meldujesz się na podium! Co powiesz na jeszcze jedną rundę, żeby przegonić **{user_1st}** i **{user_2nd}**?")
+            elif user_rank == 4:
                 top_3_names = ", ".join([f"**{item['koder']}**" for item in top_3])
-                st.warning(f"Super robota!! Chcesz przegonić {top_3_names}? Nie ma na co czekać!")
+                st.warning(f"Świetny wynik! Podium jest w Twoim zasięgu — wystarczy przegonić {top_3_names}. Do dzieła!")
+            else:
+                st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale może jednak chcesz im pokazać, gdzie ich miejsce? Co powiesz na kolejną rundę?")
 
             st.markdown("---")
             
@@ -703,10 +735,10 @@ else:
 
         col_continue, col_stop = st.columns(2)
         with col_continue:
-            # ETYKIETA PRZYCISKU ZALEŻNA OD 1. MIEJSCA
+            # ETYKIETA PRZYCISKU DLA 1. MIEJSCA BEZ NAWIASU
             btn_label = "Zacznij nową rundę!"
             if stats and stats['user_rank'] == 1:
-                btn_label = "Nie ma co osiadać na laurach, nie pozwól się zdeklasować! (Zacznij nową rundę)"
+                btn_label = "Nie ma co osiadać na laurach, nie pozwól się zdeklasować!"
 
             if st.button(btn_label, use_container_width=True, type="primary"):
                 with st.spinner("Szukam nowej partii..."):
