@@ -6,6 +6,7 @@ import extra_streamlit_components as stx
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
+BASE_COLUMNS = ['word', 'definition', 'comment']  # Kolumny niebędące koderami
 
 # --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (ZACIĄGANE Z st.secrets) ---
 PASSWORDS = {
@@ -21,7 +22,7 @@ if 'started' not in st.session_state:
     st.session_state.started = False
 
 
-# --- DYNAMICZNA KONFIGURACJA STRONY (SIDEBAR ZAMKNIĘTY NA EKRANIE 1, OTWARTY NA EKRANIE 2) ---
+# --- DYNAMICZNA KONFIGURACJA STRONY ---
 sidebar_state = "expanded" if st.session_state.started else "collapsed"
 
 if st.session_state.view_mode == 'mobilna':
@@ -95,6 +96,85 @@ def get_cookie_manager():
 cookie_manager = get_cookie_manager()
 
 
+# --- OBLICZENIA GAMYFIKACJI I STATYSTYK ---
+def calculate_gamification_stats(current_user):
+    sheet = get_sheet()
+    records = sheet.get_all_records()
+    if not records:
+        return None
+
+    df = pd.DataFrame(records)
+    
+    coder_cols = [c for c in df.columns if c.lower() not in BASE_COLUMNS]
+    
+    if current_user not in df.columns:
+        return None
+
+    # Zliczanie zakodowanych wierszy dla każdego kodera
+    counts = {}
+    for col in coder_cols:
+        valid_responses = df[col].astype(str).str.strip()
+        count = valid_responses[~valid_responses.isin(['', 'None', 'nan'])].count()
+        counts[col] = count
+
+    # Tworzenie rankingu
+    ranking_df = pd.DataFrame(list(counts.items()), columns=['koder', 'count'])
+    ranking_df = ranking_df.sort_values(by='count', ascending=False).reset_index(drop=True)
+    ranking_df['rank'] = ranking_df.index + 1
+
+    user_row = ranking_df[ranking_df['koder'] == current_user]
+    user_rank = int(user_row['rank'].values[0]) if not user_row.empty else None
+    user_count = int(user_row['count'].values[0]) if not user_row.empty else 0
+    total_koders = len(coder_cols)
+
+    # Obliczanie rozkładu ocen użytkownika
+    user_series = df[current_user].astype(str).str.strip()
+    val_counts = user_series.value_counts()
+    
+    distribution = {
+        'Zgodne (1)': int(val_counts.get('1', 0)),
+        'Niezgodne (0)': int(val_counts.get('0', 0)),
+        'Brak kontekstu (K)': int(val_counts.get('K', 0)),
+        'Nie wiem (N)': int(val_counts.get('N', 0))
+    }
+    
+    dist_df = pd.DataFrame(list(distribution.items()), columns=['Ocena', 'Liczba']).set_index('Ocena')
+
+    # Obliczanie procentu zgodności z innymi koderami
+    other_coder_cols = [c for c in coder_cols if c != current_user]
+    user_votes = df[df[current_user].astype(str).str.strip().isin(['0', '1', 'K', 'N'])]
+    
+    agreements = 0
+    comparable_rows = 0
+
+    for _, row in user_votes.iterrows():
+        my_val = str(row[current_user]).strip()
+        
+        other_vals = []
+        for c in other_coder_cols:
+            val = str(row[c]).strip()
+            if val and val not in ['None', 'nan']:
+                other_vals.append(val)
+        
+        if other_vals:
+            comparable_rows += 1
+            most_common = pd.Series(other_vals).mode()[0]
+            if my_val == most_common:
+                agreements += 1
+
+    agreement_pct = round((agreements / comparable_rows) * 100, 1) if comparable_rows > 0 else None
+
+    return {
+        'user_count': user_count,
+        'user_rank': user_rank,
+        'total_koders': total_koders,
+        'agreement_pct': agreement_pct,
+        'comparable_rows': comparable_rows,
+        'ranking_df': ranking_df,
+        'dist_df': dist_df
+    }
+
+
 # ================= EKRAN 1: STARTOWY =================
 if not st.session_state.started:
     st.title("Slang czy nie slang? Oto jest pytanie")
@@ -112,11 +192,10 @@ if not st.session_state.started:
     st.markdown("---")
     st.markdown("### Logowanie")
     st.markdown(
-    "Jeśli kodujesz pierwszy raz, wpisz wybrany nick (np. imię) – przeglądarka zapamięta Cię na tym urządzeniu!\n\n"   
-    "Chcesz kontynuować pracę na innym urządzeniu? Po prostu wpisz ten sam nick ;)"
-        )
+        "Jeśli kodujesz pierwszy raz, wpisz wybrany nick (np. imię) – przeglądarka zapamięta Cię na tym urządzeniu!\n\n"
+        "Chcesz kontynuować pracę na innym urządzeniu? Po prostu wpisz ten sam nick ;)"
+    )
 
-    # Odczyt zapisanego nicku z cookies (jeśli istnieje)
     saved_nick = cookie_manager.get(cookie="annotator_nick") or ""
 
     user_nick_input = st.text_input(
@@ -130,7 +209,6 @@ if not st.session_state.started:
 
     if st.button("Start / Kontynuuj", type="primary"):
         if 'dedicated_login' in st.session_state:
-            # Logowanie badacza (Bednarek / Janowski)
             st.session_state.started = True
             st.session_state.user_name = st.session_state.dedicated_login
             st.session_state.target_column = st.session_state.dedicated_login
@@ -141,7 +219,6 @@ if not st.session_state.started:
         else:
             existing_cols = get_existing_columns()
             
-            # Nick istnieje w bazie, ale w cookies go brak (nowe urządzenie / inny użytkownik)
             if safe_nick in existing_cols and saved_nick != safe_nick:
                 st.warning(
                     f"Nick **{clean_nick}** znajduje się już w bazie.\n\n"
@@ -149,7 +226,6 @@ if not st.session_state.started:
                     "Jeśli jesteś nową osobą kodującą: zmień proszę swój nick (np. dodaj cyfrę), aby utworzyć dedykowaną Ci kolumnę."
                 )
                 
-                # Przycisk w kolorze czerwonym (dzięki nadrzędnemu elementowi lub stylizacji st.button)
                 if st.button(f"Kontynuuj jako {clean_nick}", type="primary"):
                     st.session_state.started = True
                     st.session_state.user_name = safe_nick
@@ -157,7 +233,6 @@ if not st.session_state.started:
                     cookie_manager.set("annotator_nick", safe_nick, max_age=30*24*3600)
                     st.rerun()
             else:
-                # Pierwsze wejście nowego kodera lub powrót na tym samym urządzeniu
                 st.session_state.started = True
                 st.session_state.user_name = safe_nick
                 st.session_state.target_column = safe_nick
@@ -232,7 +307,7 @@ with st.sidebar:
     st.markdown("### Instrukcja do zadania")
     st.markdown(
         """
-        **Zadanie:** Określ, czy **wskazane słowo** zostało użyte w widocznym na ekranie **tekście** zgodnie z **podaną definicją**.\n\n     
+        **Zadanie:** Określ, czy **wskazane słowo** zostało użyte w widocznym na ekranie **tekście** zgodnie z **podaną definicją**.\n\n
         **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
         """
     )
@@ -357,7 +432,34 @@ def save_annotation(row_index, value):
 target_col = st.session_state.target_column
 
 if st.session_state.my_batch.empty:
-    st.success(f"Brak więcej przykładów do zakodowania w Twojej kolumnie: **{target_col}**!")
+    st.balloons()
+    st.header("Wszystkie przykłady zakodowane!")
+    st.write("Dziękujemy! Brawo, ukończyłeś/aś wszystkie dostępne przykłady w bazie.")
+
+    # Podsumowanie i statystyki wyświetlane WYŁĄCZNIE na ekranie końcowym
+    stats = calculate_gamification_stats(target_col)
+    if stats:
+        st.markdown("---")
+        st.subheader("Twoje podsumowanie i ranking")
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Łącznie zakodowano", f"{stats['user_count']} wierszy")
+        m2.metric("Miejsce w rankingu", f"{stats['user_rank']} / {stats['total_koders']}")
+        
+        if stats['agreement_pct'] is not None:
+            m3.metric("Zgodność z innymi", f"{stats['agreement_pct']}%", help=f"Obliczono na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów.")
+        else:
+            m3.metric("Zgodność z innymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
+
+        col_graph, col_rank = st.columns(2)
+        with col_graph:
+            st.markdown("### Rozkład Twoich ocen")
+            st.bar_chart(stats['dist_df'])
+
+        with col_rank:
+            st.markdown("### Ranking koderów")
+            display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Koder / Nick', 'count': 'Liczba ocen'})
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 else:
     unannotated_in_batch = st.session_state.my_batch[
@@ -368,6 +470,18 @@ else:
 
     if st.session_state.round_finished or unannotated_in_batch.empty:
         st.warning("Runda zakończona! Zakodowano porcję przykładów.")
+        
+        # Wyświetlanie statystyk i wykresu po zakończeniu rundy
+        stats = calculate_gamification_stats(target_col)
+        if stats:
+            col_m1, col_m2 = st.columns(2)
+            col_m1.metric("Miejsce w rankingu", f"{stats['user_rank']} z {stats['total_koders']}")
+            if stats['agreement_pct'] is not None:
+                col_m2.metric("Zgodność z koderami", f"{stats['agreement_pct']}%")
+
+            st.markdown("### Wykres Twoich ocen w tej sesji:")
+            st.bar_chart(stats['dist_df'])
+
         st.write("Chcesz kontynuować?")
 
         col_continue, col_stop = st.columns(2)
