@@ -29,6 +29,15 @@ if 'show_only_stats' not in st.session_state:
 if 'stats_user_nick' not in st.session_state:
     st.session_state.stats_user_nick = ''
 
+if 'last_rank' not in st.session_state:
+    st.session_state.last_rank = None
+
+if 'overtaken_user' not in st.session_state:
+    st.session_state.overtaken_user = None
+
+if 'overtaken_target_rank' not in st.session_state:
+    st.session_state.overtaken_target_rank = None
+
 
 # --- DYNAMICZNA KONFIGURACJA STRONY ---
 sidebar_state = "expanded" if st.session_state.started or st.session_state.show_only_stats else "collapsed"
@@ -451,7 +460,7 @@ with st.sidebar:
     st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
 
     if st.button("Wyloguj się"):
-        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started', 'show_existing_warning', 'show_only_stats', 'stats_user_nick']:
+        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started', 'show_existing_warning', 'show_only_stats', 'stats_user_nick', 'last_rank', 'overtaken_user', 'overtaken_target_rank']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -542,8 +551,31 @@ def save_annotation(row_index, value):
     st.session_state.my_batch.loc[row_index, target_col] = str(value)
     st.session_state.current_in_batch += 1
 
+    # PRZED ZAPISANIEM POBIERAMY OBECNĄ POZYCJĘ I RANKING
+    prev_stats = calculate_gamification_stats(target_col)
+    if prev_stats:
+        st.session_state.last_rank = prev_stats['user_rank']
+
     if st.session_state.current_in_batch >= len(st.session_state.my_batch):
         st.session_state.round_finished = True
+
+    # SPRAWDZENIE CZY PRZEGONIŁO KOGOŚ Z TOP 3
+    new_stats = calculate_gamification_stats(target_col)
+    if new_stats and st.session_state.last_rank:
+        new_rank = new_stats['user_rank']
+        prev_rank = st.session_state.last_rank
+        
+        # Jeśli awansowaliśmy na pozycję 1, 2 lub 3 z wyższej pozycji
+        if new_rank < prev_rank and new_rank <= 3:
+            ranking_df = new_stats['ranking_df']
+            # Osoba przegoniona znajduje się obecnie o jedno miejsce niżej
+            overtaken_row = ranking_df[ranking_df['rank'] == new_rank + 1]
+            if not overtaken_row.empty:
+                overtaken_nick = overtaken_row['koder'].values[0]
+                st.session_state.overtaken_user = overtaken_nick
+                st.session_state.overtaken_target_rank = new_rank
+        
+        st.session_state.last_rank = new_rank
 
     st.rerun()
 
@@ -614,6 +646,24 @@ else:
         
         stats = calculate_gamification_stats(target_col)
         if stats:
+            user_rank = stats['user_rank']
+            ranking_df = stats['ranking_df']
+            top_3 = stats['top_3']
+
+            # SPRAWDAJEMY MIEJSCE UŻYTKOWNIKA I WYŚWIETLAMY DEDYKOWANY KOMUNIKAT W ŻÓŁTYM OKIENKU
+            if user_rank == 1:
+                st.warning("WOW! Świetna robota, konkurencja nie ma z Tobą szans!")
+            elif user_rank == 2:
+                user_1st = ranking_df[ranking_df['rank'] == 1]['koder'].values[0]
+                st.warning(f"Tak blisko! Jeszcze chwilę i przegonisz **{user_1st}**. Nie ma co się teraz poddawać!")
+            elif user_rank == 3:
+                user_1st = ranking_df[ranking_df['rank'] == 1]['koder'].values[0]
+                user_2nd = ranking_df[ranking_df['rank'] == 2]['koder'].values[0]
+                st.warning(f"Brawo, to już podium! To co? Jeszcze parę przykładów, żeby przegonić **{user_1st}** i **{user_2nd}**?")
+            else:
+                top_3_names = ", ".join([f"**{item['koder']}**" for item in top_3])
+                st.warning(f"Super robota!! Chcesz przegonić {top_3_names}? Nie ma na co czekać!")
+
             col_left, col_right = st.columns(2)
             
             with col_left:
@@ -653,11 +703,18 @@ else:
 
         col_continue, col_stop = st.columns(2)
         with col_continue:
-            if st.button("Zacznij nową rundę!", use_container_width=True):
+            # ETYKIETA PRZYCISKU ZALEŻNA OD 1. MIEJSCA
+            btn_label = "Zacznij nową rundę!"
+            if stats and stats['user_rank'] == 1:
+                btn_label = "Nie ma co osiadać na laurach, nie pozwól się zdeklasować! (Zacznij nową rundę)"
+
+            if st.button(btn_label, use_container_width=True, type="primary"):
                 with st.spinner("Szukam nowej partii..."):
                     st.session_state.my_batch = fetch_user_batch(batch_size=20)
                     st.session_state.current_in_batch = 0
                     st.session_state.round_finished = False
+                    st.session_state.overtaken_user = None
+                    st.session_state.overtaken_target_rank = None
                 st.rerun()
 
         with col_stop:
@@ -665,6 +722,12 @@ else:
                 st.info("Twoje odpowiedzi zostały bezpiecznie zapisane. Możesz zamknąć przeglądarkę.")
 
     else:
+        # KOMUNIKAT DYNAMICZNY W TRAKCIE RUNDY O PRZEGONIENIU KOGOŚ Z TOP 3
+        if st.session_state.overtaken_user and st.session_state.overtaken_target_rank:
+            rank_names = {1: "pierwszy/a", 2: "drugi/a", 3: "trzeci/a"}
+            target_rank_str = rank_names.get(st.session_state.overtaken_target_rank, "wyżej")
+            st.success(f"Właśnie przegoniłeś/aś **{st.session_state.overtaken_user}**! Jeszcze chwila i będziesz **{target_rank_str}**!")
+
         current_row = unannotated_in_batch.iloc[0]
         actual_index = current_row.name
 
