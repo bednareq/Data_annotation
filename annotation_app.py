@@ -232,13 +232,13 @@ if st.session_state.show_only_stats:
             st.metric(
                 "Miejsce w rankingu aktywności", 
                 f"{stats['user_rank']} z {stats['total_koders']}",
-                help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
+                help="Ranking według liczby zakodowanych przykładów."
             )
             if stats['agreement_pct'] is not None:
                 st.metric(
                     "Zgodność z pozostałymi osobami kodującymi", 
                     f"{stats['agreement_pct']}%",
-                    help=f"(Majority Agreement Ratio) - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                    help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                 )
             else:
                 st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
@@ -250,16 +250,15 @@ if st.session_state.show_only_stats:
                     st.markdown(f"**{i+1}. {item['koder']}** — {item['count']} ocen")
 
         st.markdown("---")
-        st.markdown("### Rozkład ocen:")
         
-        chart_total = make_pie_chart(stats['dist_total_df'], "Wszystkie Twoje oceny")
+        chart_total = make_pie_chart(stats['dist_total_df'], "Rozkład Twoich dotychczasowych ocen")
         if chart_total:
             st.altair_chart(chart_total, use_container_width=True)
         else:
             st.info("Brak ocen w historii dla tego nicku.")
 
-        st.markdown("### Pełny ranking koderów (według liczby zakodowanych przykładów)")
-        display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Koder / Nick', 'count': 'Łącznie zakodowanych przykładów'})
+        st.markdown("### Pełny ranking osób kodujących")
+        display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Nick', 'count': 'Łącznie zakodowanych przykładów'})
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
@@ -286,10 +285,10 @@ if not st.session_state.started:
     )
 
     st.markdown("---")
-    st.markdown("### Logowanie")
+    st.markdown("### Zacznijmy kodować!")
     st.markdown(
-        "Jeśli kodujesz pierwszy raz, wpisz wybrany nick (np. imię) – przeglądarka zapamięta Cię na tym urządzeniu!\n\n"
-        "Chcesz kontynuować pracę na innym urządzeniu? Po prostu wpisz ten sam nick ;)"
+        "Jeśli kodujesz pierwszy raz, wpisz wybrany nick (np. imię) – przeglądarka zapamięta Cię na tym urządzeniu.\n\n"
+        "Chcesz kontynuować pracę na innym urządzeniu? Po prostu wpisz ten sam nick."
     )
 
     cookie_manager = stx.CookieManager(key="annotator_cookie_manager")
@@ -304,7 +303,6 @@ if not st.session_state.started:
     clean_nick = user_nick_input.strip()
     safe_nick = "".join(c for c in clean_nick if c.isalnum() or c in ('_', '-')).lower()
 
-    # Flaga logowania po ostrzeżeniu o zajętym nicku
     if 'show_existing_warning' not in st.session_state:
         st.session_state.show_existing_warning = False
 
@@ -323,7 +321,6 @@ if not st.session_state.started:
         else:
             existing_cols = get_existing_columns()
             
-            # Gdy nick istnieje w bazie, ale nie ma go w ciasteczkach
             if safe_nick in existing_cols and saved_nick != safe_nick:
                 st.session_state.show_existing_warning = True
                 st.warning(
@@ -340,7 +337,6 @@ if not st.session_state.started:
                     cookie_manager.set("annotator_nick", safe_nick, max_age=30*24*3600)
                     st.rerun()
             else:
-                # Zwykłe pierwsze logowanie lub rozpoznanie z ciasteczka
                 st.session_state.started = True
                 st.session_state.user_name = safe_nick
                 st.session_state.target_column = safe_nick
@@ -350,14 +346,14 @@ if not st.session_state.started:
                 st.rerun()
 
     with st.sidebar:
-        st.markdown("### Zobacz moje statystyki")
+        st.markdown("### Zobacz ranking")
         stats_nick_input = st.text_input(
             "Wpisz swój nick:",
             value=saved_nick,
             key="stats_nick_input_field",
             placeholder="np. Kuba"
         )
-        if st.button("Pokaż statystyki", use_container_width=True):
+        if st.button("Pokaż mój wynik", use_container_width=True):
             clean_stats_nick = stats_nick_input.strip()
             safe_stats_nick = "".join(c for c in clean_stats_nick if c.isalnum() or c in ('_', '-')).lower()
             if not safe_stats_nick:
@@ -557,7 +553,7 @@ target_col = st.session_state.target_column
 if st.session_state.my_batch.empty:
     st.balloons()
     st.header("Wszystkie przykłady zakodowane!")
-    st.write("Dziękujemy! Brawo, ukończyłeś/aś wszystkie dostępne przykłady w bazie.")
+    st.write("Dziękujemy! Brawo, ukończył_ś wszystkie dostępne przykłady w bazie.")
 
     stats = calculate_gamification_stats(target_col)
     if stats:
@@ -570,38 +566,38 @@ if st.session_state.my_batch.empty:
             st.metric(
                 "Miejsce w rankingu aktywności", 
                 f"{stats['user_rank']} / {stats['total_koders']}", 
-                help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
+                help="Ranking według liczby zakodowanych przykładów."
             )
             
             if stats['agreement_pct'] is not None:
                 st.metric(
                     "Zgodność z koderami", 
                     f"{stats['agreement_pct']}%", 
-                    help=f"(Majority Agreement Ratio) - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                    help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych osób kodujących, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                 )
             else:
-                st.metric("Zgodność z koderami", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
+                st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez inne osoby kodujące do porównania.")
 
         with col_right:
             if stats['top_3']:
-                st.markdown("### TOP 3 najaktywniejszych koderów")
+                st.markdown("### TOP 3 najaktywniejszych osób kodujących")
                 for i, item in enumerate(stats['top_3']):
                     st.markdown(f"**{i+1}. {item['koder']}** — {item['count']} ocen")
 
         col_pie1, col_pie2 = st.columns(2)
         with col_pie1:
-            chart1 = make_pie_chart(stats['dist_session_df'], "Oceny w tej sesji")
+            chart1 = make_pie_chart(stats['dist_session_df'], "Twoje oceny w tej sesji")
             if chart1:
                 st.altair_chart(chart1, use_container_width=True)
             else:
                 st.write("Brak ocen w tej sesji.")
 
         with col_pie2:
-            chart2 = make_pie_chart(stats['dist_total_df'], "Oceny łącznie (historia)")
+            chart2 = make_pie_chart(stats['dist_total_df'], "Rozkład Twoich dotychczasowych ocen")
             if chart2:
                 st.altair_chart(chart2, use_container_width=True)
 
-        st.markdown("### Pełny ranking koderów (według liczby zakodowanych przykładów)")
+        st.markdown("### Pełny ranking osób kodujących")
         display_df = stats['ranking_df'].rename(columns={'rank': 'Miejsce', 'koder': 'Koder / Nick', 'count': 'Łącznie zakodowanych przykładów'})
         st.dataframe(display_df, use_container_width=True, hide_index=True)
 
@@ -629,7 +625,7 @@ else:
                     st.metric(
                         "Zgodność z pozostałymi osobami kodującymi", 
                         f"{stats['agreement_pct']}%",
-                        help=f"(Majority Agreement Ratio) - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                        help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych osób kodujących, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                     )
                 else:
                     st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
@@ -640,7 +636,7 @@ else:
                     for i, item in enumerate(stats['top_3']):
                         st.markdown(f"**{i+1}. {item['koder']}** — {item['count']} ocen")
 
-            st.markdown("### Rozkład ocen po tej rundzie:")
+            st.markdown("---")
             
             col_pie1, col_pie2 = st.columns(2)
             with col_pie1:
@@ -648,7 +644,7 @@ else:
                 if chart1:
                     st.altair_chart(chart1, use_container_width=True)
             with col_pie2:
-                chart2 = make_pie_chart(stats['dist_total_df'], "Wszystkie Twoje oceny")
+                chart2 = make_pie_chart(stats['dist_total_df'], "Rozkład Twoich dotychczasowych ocen")
                 if chart2:
                     st.altair_chart(chart2, use_container_width=True)
 
