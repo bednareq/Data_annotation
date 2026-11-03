@@ -529,17 +529,17 @@ else:
             col_m1.metric(
                 "Miejsce w rankingu aktywności", 
                 f"{stats['user_rank']} z {stats['total_koders']}",
-                help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
+                help="Ranking według liczby zakodowanych przykładów"
             )
             if stats['agreement_pct'] is not None:
                 col_m2.metric(
-                    "Zgodność z koderami (Majority Agreement Ratio)", 
+                    "Zgodność z pozostałymi osobami kodującymi (Majority Agreement Ratio)", 
                     f"{stats['agreement_pct']}%"
                 )
 
             # TOP 3 koderów po rundzie
             if stats['top_3']:
-                st.markdown("### TOP 3 najaktywniejszych koderów")
+                st.markdown("### TOP 3 najaktywniejszych osób kodujących")
                 top_str = " | ".join([f"**{i+1}. {item['koder']}** ({item['count']} ocen)" for i, item in enumerate(stats['top_3'])])
                 st.markdown(top_str)
 
@@ -547,11 +547,11 @@ else:
             
             col_pie1, col_pie2 = st.columns(2)
             with col_pie1:
-                chart1 = make_pie_chart(stats['dist_session_df'], "Oceny w tej sesji")
+                chart1 = make_pie_chart(stats['dist_session_df'], "Twoje oceny w tej sesji")
                 if chart1:
                     st.altair_chart(chart1, use_container_width=True)
             with col_pie2:
-                chart2 = make_pie_chart(stats['dist_total_df'], "Oceny łącznie (historia)")
+                chart2 = make_pie_chart(stats['dist_total_df'], "Wsyztskie Twoje oceny")
                 if chart2:
                     st.altair_chart(chart2, use_container_width=True)
 
