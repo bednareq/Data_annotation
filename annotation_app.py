@@ -675,7 +675,7 @@ else:
     ]
 
     if st.session_state.round_finished or unannotated_in_batch.empty:
-    
+        
         stats = calculate_gamification_stats(target_col)
         if stats:
             user_rank = stats['user_rank']
@@ -719,7 +719,14 @@ else:
                 top_3_names = ", ".join([f"**{item['koder']}**" for item in top_3])
                 st.warning(f"Świetny wynik! Podium jest w Twoim zasięgu — wystarczy przegonić {top_3_names}. Do dzieła!")
             else:
-                st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale... może jednak chcesz pokazać tej trójce, gdzie ich miejsce? Co powiesz na kolejną rundę?")
+                prev_user_row = ranking_df[ranking_df['rank'] == user_rank - 1]
+                if not prev_user_row.empty:
+                    prev_user_name = prev_user_row['koder'].values[0]
+                    prev_user_count = int(prev_user_row['count'].values[0])
+                    diff = prev_user_count - stats['user_count'] + 1
+                    st.warning(f"Idzie Ci świetnie! Żeby przebić **{prev_user_name}** brakuje Ci **{diff}** zakodowanych komentarzy. Co powiesz na kolejną rundę?")
+                else:
+                    st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale... może czas pokazać wszystkim, gdzie ich miejsce? Co powiesz na kolejną rundę?")
 
             st.markdown("---")
             
