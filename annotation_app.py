@@ -112,9 +112,9 @@ if not st.session_state.started:
     st.markdown("---")
     st.markdown("### Logowanie")
     st.markdown(
-        "Jeśli kodujesz pierwszy raz, wpisz swój dowolny nick (np. imię). Przeglądarka zapamięta Cię na tym urządzeniu. "
-        "Jeśli będziesz chciał_a kontynuować pracę z innego urządzenia, wpisz ten sam nick."
-    )
+    "Jeśli kodujesz pierwszy raz, wpisz wybrany przez siebie nick (np. imię), a przeglądarka zapamięta Cię na tym urządzeniu!\n\n"
+    "Jeśli będziesz chciał_a kontynuować pracę z innego urządzenia, użyj wtedy tego samego nicku."
+        )
 
     # Odczyt zapisanego nicku z cookies (jeśli istnieje)
     saved_nick = cookie_manager.get(cookie="annotator_nick") or ""
