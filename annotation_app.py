@@ -112,8 +112,8 @@ if not st.session_state.started:
     st.markdown("---")
     st.markdown("### Logowanie")
     st.markdown(
-    "Jeśli kodujesz pierwszy raz, wpisz wybrany przez siebie nick (np. imię), a przeglądarka zapamięta Cię na tym urządzeniu!\n\n"
-    "Jeśli będziesz chciał_a kontynuować pracę z innego urządzenia, użyj wtedy tego samego nicku."
+    "Jeśli kodujesz pierwszy raz, wpisz wybrany nick (np. imię) – przeglądarka zapamięta Cię na tym urządzeniu!\n"  
+    "Chcesz kontynuować pracę na innym urządzeniu? Po prostu wpisz ten sam nick ;)"
         )
 
     # Odczyt zapisanego nicku z cookies (jeśli istnieje)
@@ -145,7 +145,7 @@ if not st.session_state.started:
             if safe_nick in existing_cols and saved_nick != safe_nick:
                 st.warning(
                     f"Nick **{clean_nick}** znajduje się już w bazie.\n\n"
-                    "Jeśli to Ty wracasz do gry z nowego urządzenia lub przeglądarki: kliknij przycisk poniżej, aby kontynuować.\n\n"
+                    "Jeśli to Ty wracasz do kodowania z nowego urządzenia lub przeglądarki: kliknij przycisk poniżej, aby kontynuować.\n\n"
                     "Jeśli jesteś nową osobą kodującą: zmień proszę swój nick (np. dodaj cyfrę), aby utworzyć dedykowaną Ci kolumnę."
                 )
                 
@@ -232,7 +232,7 @@ with st.sidebar:
     st.markdown("### Instrukcja do zadania")
     st.markdown(
         """
-        **Zadanie:** Określ, czy **wskazane słowo** zostało użyte w widocznym na ekranie **tekście** zgodnie z **podaną definicją**.  
+        **Zadanie:** Określ, czy **wskazane słowo** zostało użyte w widocznym na ekranie **tekście** zgodnie z **podaną definicją \n**.     
         **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
         """
     )
