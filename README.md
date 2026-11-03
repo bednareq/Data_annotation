@@ -23,11 +23,11 @@ Głównym celem aplikacji jest pozyskanie ludzkich etykiet adnotacyjnych dla wys
 * **Ochrona przed limitami API:** Dane pobierane są z arkusza jednorazowo w zkeszowanej sesji (`@st.cache_resource`), a zapis ocen odbywa się w tle w czasie rzeczywistym.
 * **Progres rundy:** Interaktywny pasek postępu (progress bar) informuje o liczbie ukończonych zadań w bieżącej rundzie.
 
-### 2. Wyświetlanie kontekstu i podświetlanie rdzenia (Stemming / Regex)
+### 2. Wyświetlanie kontekstu i podświetlanie rdzenia
 * **Automatyczne podświetlanie:** Aplikacja dynamicznie odnajduje oceniane słowo w tekście i je pogrubia (`<b>`).
 * **Obsługa odmiany słów:** Zastosowanie algorytmu stemmingu opartego na wyrażeniach regularnych (`re.compile(r'\b' + stem + r'\w*')`) pozwala na automatyczne podświetlanie odmienionych form słów slangowych (np. *ziomal* $\rightarrow$ **ziomalami**, **ziomala**).
 
-### 3. System adnotacji (Legenda ocen)
+### 3. System adnotacji
 Osoba kodująca ma do wyboru jeden z 4 wariantów odpowiedzi:
 * `1` — **Zgodne z definicją:** Słowo zostało użyte w tekście zgodnie z podaną definicją.
 * `0` — **Niezgodne z definicją:** Słowo **nie** zostało użyte w tekście zgodnie z podaną definicją.
