@@ -4,8 +4,6 @@ Aplikacja webowa typu **Crowdsourcing & Gamification** służąca do adnotacji d
 
 Projekt powstał w ramach pracy magisterskiej realizowanej na **Wydziale Matematyki i Informatyki Uniwersytetu im. Adama Mickiewicza w Poznaniu**.
 
----
-
 ## Cel projektu
 
 Głównym celem aplikacji jest pozyskanie ludzkich etykiet adnotacyjnych dla wystąpień słów slangowych w autentycznych tekstach z sieci.
@@ -13,8 +11,6 @@ Głównym celem aplikacji jest pozyskanie ludzkich etykiet adnotacyjnych dla wys
 * **Źródła danych:** Hasła wraz z definicjami pochodzą ze słownika miejskiego ([miejski.pl](https://www.miejski.pl)), natomiast komentarze pochodzą z serwisu Wykop (zbiór danych z serwisu Kaggle: [Wykop Data](https://www.kaggle.com/datasets/szymgaj226/wykop-data)).
 * **Zadanie badawcze:** Osoby kodujące oceniają, czy dane słowo w konkretnym komentarzu zostało użyte zgodnie z przedstawioną definicją.
 * **Zastosowanie:** Zgromadzone dane utworzą tzw. **gold standard**, który posłuży do ewaluacji i porównania jakości kodowania tych samych przykładów przez różne modele językowe (LLM).
-
----
 
 ## Kluczowe mechaniki aplikacji
 
@@ -47,8 +43,6 @@ Po ukończeniu każdej rundy (lub na żądanie w panelu bocznym) wyświetlane je
 * **Obsługa konfliktów nicków:** W przypadku wykrycia istniejącego w bazie nicku aplikacja dopytuje, czy użytkownik kontynuuje pracę z nowego urządzenia, czy chce utworzyć nowy profil.
 * **Dedykowany Panel Badacza:** Umożliwia głównym adnotatorom dostęp do przypisanych kolumn po autoryzacji hasłem.
 
----
-
 ## Architektura techniczna
 
 * **Frontend / UI:** [Streamlit](https://streamlit.io/) (z adaptacyjnym układem mobilnym i przeglądarkowym).
@@ -56,8 +50,6 @@ Po ukończeniu każdej rundy (lub na żądanie w panelu bocznym) wyświetlane je
 * **Wizualizacja danych:** [Altair](https://altair-viz.github.io/) (interaktywne wykresy kołowe).
 * **Baza danych:** Google Sheets za pośrednictwem biblioteki `gspread` i konta serwisowego GCP (`Credentials`).
 * **Przetwarzanie danych:** `pandas`, `re`.
-
----
 
 ## Autor
 
