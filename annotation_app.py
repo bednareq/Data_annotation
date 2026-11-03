@@ -243,7 +243,13 @@ if not st.session_state.started:
     clean_nick = user_nick_input.strip()
     safe_nick = "".join(c for c in clean_nick if c.isalnum() or c in ('_', '-')).lower()
 
-    if st.button("Start / Kontynuuj", type="primary"):
+    # Flaga logowania po ostrzeżeniu o zajętym nicku
+    if 'show_existing_warning' not in st.session_state:
+        st.session_state.show_existing_warning = False
+
+    start_clicked = st.button("Start / Kontynuuj", type="primary")
+
+    if start_clicked or st.session_state.show_existing_warning:
         if 'dedicated_login' in st.session_state:
             st.session_state.started = True
             st.session_state.user_name = st.session_state.dedicated_login
@@ -252,10 +258,13 @@ if not st.session_state.started:
             st.rerun()
         elif not safe_nick:
             st.error("Proszę podać nick przed rozpoczęciem!")
+            st.session_state.show_existing_warning = False
         else:
             existing_cols = get_existing_columns()
             
+            # Gdy nick istnieje w bazie, ale nie ma go w ciasteczkach
             if safe_nick in existing_cols and saved_nick != safe_nick:
+                st.session_state.show_existing_warning = True
                 st.warning(
                     f"Nick **{clean_nick}** znajduje się już w bazie.\n\n"
                     "Jeśli to Ty wracasz do kodowania z nowego urządzenia lub przeglądarki: kliknij przycisk poniżej, aby kontynuować.\n\n"
@@ -266,12 +275,15 @@ if not st.session_state.started:
                     st.session_state.started = True
                     st.session_state.user_name = safe_nick
                     st.session_state.target_column = safe_nick
+                    st.session_state.show_existing_warning = False
                     cookie_manager.set("annotator_nick", safe_nick, max_age=30*24*3600)
                     st.rerun()
             else:
+                # Zwykłe pierwsze logowanie lub rozpoznanie z ciasteczka
                 st.session_state.started = True
                 st.session_state.user_name = safe_nick
                 st.session_state.target_column = safe_nick
+                st.session_state.show_existing_warning = False
                 cookie_manager.set("annotator_nick", safe_nick, max_age=30*24*3600)
                 ensure_user_column_exists(safe_nick)
                 st.rerun()
@@ -363,7 +375,7 @@ with st.sidebar:
     st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
 
     if st.button("Wyloguj się"):
-        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
+        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started', 'show_existing_warning']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -538,7 +550,7 @@ else:
                     st.metric(
                         "Zgodność z pozostałymi osobami kodującymi", 
                         f"{stats['agreement_pct']}%",
-                        help=f"Majority Agreement Ratio - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                        help=f"(Majority Agreement Ratio) - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                     )
                 else:
                     st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
