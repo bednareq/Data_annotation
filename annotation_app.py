@@ -486,7 +486,7 @@ if st.session_state.my_batch.empty:
                 st.metric(
                     "Zgodność z koderami", 
                     f"{stats['agreement_pct']}%", 
-                    help=f"Zgodność z przeważającą oceną (Majority Agreement Ratio) obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
+                    help=f"(Majority Agreement Ratio) - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                 )
             else:
                 st.metric("Zgodność z koderami", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
@@ -532,13 +532,16 @@ else:
                 st.metric(
                     "Miejsce w rankingu aktywności", 
                     f"{stats['user_rank']} z {stats['total_koders']}",
-                    help="Ranking według liczby zakodowanych przykładów"
+                    help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
                 )
                 if stats['agreement_pct'] is not None:
                     st.metric(
-                        "Zgodność z pozostałymi osobami kodującymi (Majority Agreement Ratio)", 
-                        f"{stats['agreement_pct']}%"
+                        "Zgodność z pozostałymi osobami kodującymi", 
+                        f"{stats['agreement_pct']}%",
+                        help=f"(Majority Agreement Ratio) - Procentowa zgodność z przeważającą oceną pozostałych koderów, obliczona na podstawie {stats['comparable_rows']} wspólnie zakodowanych przykładów."
                     )
+                else:
+                    st.metric("Zgodność z pozostałymi osobami kodującymi", "Brak danych", help="Brak wspólnych wierszy zakodowanych przez innych koderów do porównania.")
 
             with col_right:
                 if stats['top_3']:
