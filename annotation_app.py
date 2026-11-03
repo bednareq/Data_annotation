@@ -609,7 +609,7 @@ else:
     ]
 
     if st.session_state.round_finished or unannotated_in_batch.empty:
-        st.warning("Runda zakończona! Zakodowano porcję przykładów.")
+        st.warning("Runda zakończona, zakodowano 20 przykładów!")
         
         stats = calculate_gamification_stats(target_col)
         if stats:
@@ -619,7 +619,7 @@ else:
                 st.metric(
                     "Miejsce w rankingu aktywności", 
                     f"{stats['user_rank']} z {stats['total_koders']}",
-                    help="Ranking według liczby zakodowanych przykładów (kto zakodował najwięcej)."
+                    help="Ranking według liczby zakodowanych przykładów."
                 )
                 if stats['agreement_pct'] is not None:
                     st.metric(
@@ -648,7 +648,7 @@ else:
                 if chart2:
                     st.altair_chart(chart2, use_container_width=True)
 
-        st.write("Chcesz kontynuować?")
+        st.markdown("---")
 
         col_continue, col_stop = st.columns(2)
         with col_continue:
