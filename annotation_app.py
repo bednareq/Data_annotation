@@ -746,7 +746,7 @@ else:
         with col_continue:
             btn_label = "Zacznij nową rundę!"
             if stats and stats['user_rank'] == 1:
-                btn_label = "Nie ma co osiadać na laurach, nie pozwól się zdeklasować!"
+                btn_label = "Nie ma co spoczywać na laurach, nie pozwól się zdeklasować!"
 
             if st.button(btn_label, use_container_width=True, type="primary"):
                 with st.spinner("Szukam nowej partii..."):
