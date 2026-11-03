@@ -1,8 +1,8 @@
 import pandas as pd
 import streamlit as st
 import gspread
-import re
 import random
+import extra_streamlit_components as stx
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
@@ -13,28 +13,21 @@ PASSWORDS = {
     'janowski': st.secrets["passwords"]["janowski"],
 }
 
-# --- WYBÓR WERSJI APLIKACJI ---
+# --- KONFIGURACJA STRONY I WERSJI WIDOKU ---
 if 'view_mode' not in st.session_state:
     st.session_state.view_mode = 'mobilna'
 
 if st.session_state.view_mode == 'mobilna':
     st.set_page_config(page_title="Slang czy nie slang?", layout="wide", initial_sidebar_state="expanded")
-else:
-    st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state="expanded")
-
-if st.session_state.view_mode == 'mobilna':
     st.markdown(
         """
         <style>
         :root {
             --base-font: clamp(1rem, 1.6vw, 1.35rem);
         }
-        /* Styl głównego obszaru aplikacji – NIE dotyczy panelu bocznego,
-           aby po jego zwinięciu nie były widoczne litery. */
         .block-container {
             font-size: var(--base-font);
         }
-        /* Całkowite ukrycie zawartości zwiniętego panelu bocznego */
         [data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarContent"],
         [data-testid="stSidebar"][aria-expanded="false"] section {
             visibility: hidden;
@@ -53,6 +46,9 @@ if st.session_state.view_mode == 'mobilna':
         """,
         unsafe_allow_html=True
     )
+else:
+    st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state="expanded")
+
 
 # --- GOOGLE SHEETS CONNECTION ---
 @st.cache_resource
@@ -69,81 +65,22 @@ def get_sheet():
     client = get_gspread_client()
     return client.open(SPREADSHEET_NAME).sheet1
 
-def parse_reservation(val):
-    """Pomocnicza funkcja do odczytywania ID koderów z kolumny reserved_by."""
-    val_str = str(val).strip()
-    if not val_str or val_str in ['None', 'nan']:
-        return None
-    return val_str
-
-def get_next_user_id():
-    """Generuje unikalne ID dla anonimowego użytkownika."""
+def ensure_user_column_exists(user_col_name):
+    """Sprawdza, czy kolumna dla użytkownika istnieje w arkuszu. Jeśli nie – tworzy ją w pierwszym wierszu."""
     sheet = get_sheet()
-    records = sheet.get_all_records()
-    existing_numbers = []
-    if records:
-        df = pd.DataFrame(records)
-        if 'reserved_by' in df.columns:
-            for val in df['reserved_by']:
-                user_id = parse_reservation(val)
-                if user_id:
-                    m = re.match(r'^id_(\d+)$', user_id)
-                    if m:
-                        existing_numbers.append(int(m.group(1)))
-    next_num = max(existing_numbers) + 1 if existing_numbers else 1
-    return f"id_{next_num}"
+    headers = sheet.row_values(1)
+    
+    if user_col_name not in headers:
+        new_col_idx = len(headers) + 1
+        sheet.update_cell(1, new_col_idx, user_col_name)
 
-def cleanup_my_reservations():
-    """Usuwa wyłącznie WŁASNE rezerwacje bieżącego użytkownika z kolumny reserved_by
-    (np. po wylogowaniu). Rezerwacje innych osób pozostają nietknięte.
-    Czyści WSZYSTKIE wiersze zarezerwowane przez tego użytkownika, niezależnie od
-    tego, czy ma już ocenę w coder1."""
-    user = st.session_state.get('user_name')
-    if not user:
-        return
+# --- MANAGERA COOKIES ---
+@st.cache_resource(experimental_allow_widgets=True)
+def get_cookie_manager():
+    return stx.CookieManager()
 
-    sheet = get_sheet()
-    records = sheet.get_all_records()
-    if not records:
-        return
+cookie_manager = get_cookie_manager()
 
-    df = pd.DataFrame(records)
-    if 'reserved_by' not in df.columns:
-        return
-
-    reserved_col_idx = df.columns.get_loc('reserved_by') + 1
-    cells_to_clear = []
-
-    for idx, row in df.iterrows():
-        res_user = parse_reservation(row['reserved_by'])
-
-        # Wiersz zarezerwowany przez bieżącego użytkownika -> zwalniamy go
-        if res_user == user:
-            cells_to_clear.append(
-                gspread.Cell(row=idx + 2, col=reserved_col_idx, value='')
-            )
-
-    if cells_to_clear:
-        sheet.update_cells(cells_to_clear)
-
-def clear_all_reservations():
-    """Czyszczenie całej kolumny reserved_by (funkcja dla administratora/Bednarka)."""
-    sheet = get_sheet()
-    records = sheet.get_all_records()
-    if not records:
-        return
-
-    df = pd.DataFrame(records)
-    if 'reserved_by' not in df.columns:
-        return
-
-    reserved_col_idx = df.columns.get_loc('reserved_by') + 1
-    cells_to_clear = [
-        gspread.Cell(row=idx + 2, col=reserved_col_idx, value='')
-        for idx in range(len(df))
-    ]
-    if cells_to_clear:
-        sheet.update_cells(cells_to_clear)
 
 # --- EKRAN STARTOWY ---
 if 'started' not in st.session_state:
@@ -163,18 +100,47 @@ if not st.session_state.started:
     )
 
     st.markdown("---")
+    st.markdown("### 👤 Identyfikacja ankietowanego")
+    st.info(
+        "**Informacja:** Jeśli kodujesz pierwszy raz, ustaw swój nick poniżej. "
+        "Przy następnych logowaniach przeglądarka powinna sama Cię zalogować do Twojej dedykowanej kolumny "
+        "(o ile łączysz się z tego samego urządzenia). Jeśli chcesz kontynuować z innego urządzenia lub przeglądarki, "
+        "wpisz swój wcześniej użyty nick ręcznie."
+    )
+
+    # Odczyt nicku z cookies (jeśli istnieje)
+    saved_nick = cookie_manager.get(cookie="annotator_nick") or ""
+    
+    user_nick_input = st.text_input(
+        "Wpisz swój nick / imię:",
+        value=saved_nick,
+        placeholder="np. Ania, Koder12..."
+    )
 
     if st.button("Start!", type="primary"):
-        st.session_state.started = True
-        if 'dedicated_login' in st.session_state:
-            st.session_state.user_name = st.session_state.dedicated_login
-            st.session_state.target_column = st.session_state.dedicated_login
-            st.session_state.is_dedicated_coder = True
+        clean_nick = user_nick_input.strip()
+        
+        if not clean_nick and 'dedicated_login' not in st.session_state:
+            st.error("Proszę podać nick przed rozpoczęciem kodowania!")
         else:
-            st.session_state.user_name = get_next_user_id()
-            st.session_state.target_column = 'coder1'
-            st.session_state.is_dedicated_coder = False
-        st.rerun()
+            st.session_state.started = True
+            
+            if 'dedicated_login' in st.session_state:
+                st.session_state.user_name = st.session_state.dedicated_login
+                st.session_state.target_column = st.session_state.dedicated_login
+            else:
+                # Normalny koder – czyszczenie nicku z niedozwolonych znaków
+                safe_nick = "".join(c for c in clean_nick if c.isalnum() or c in ('_', '-')).lower()
+                st.session_state.user_name = safe_nick
+                st.session_state.target_column = safe_nick
+                
+                # Zapisujemy nick w cookies na 30 dni
+                cookie_manager.set("annotator_nick", safe_nick, max_age=30*24*3600)
+                
+                # Upewniamy się, że kolumna istnieje w Google Sheets
+                ensure_user_column_exists(safe_nick)
+                
+            st.rerun()
 
     with st.sidebar:
         st.markdown("### Panel badacza")
@@ -200,12 +166,9 @@ if not st.session_state.started:
         if selected_login:
             login_pw = st.text_input(f"Hasło dla {selected_login}:", type="password")
             if st.button("Zaloguj", use_container_width=True, type="primary"):
-                # Specjalne hasło 'clean' dla konta Bednarek czyszczące wszystkie rezerwacje
-                if selected_login == 'Bednarek' and login_pw == 'clean':
-                    clear_all_reservations()
-                    st.success("Wyczyszczono całą kolumnę reserved_by!")
-                elif login_pw == (PASSWORDS['bednarek'] if selected_login == 'Bednarek' else PASSWORDS['janowski']):
+                if login_pw == (PASSWORDS['bednarek'] if selected_login == 'Bednarek' else PASSWORDS['janowski']):
                     st.session_state.dedicated_login = 'bednarek' if selected_login == 'Bednarek' else 'janowski'
+                    ensure_user_column_exists(st.session_state.dedicated_login)
                     st.success(f"Zalogowano jako {selected_login}.")
                 else:
                     st.error("Nieprawidłowe hasło. Spróbuj ponownie.")
@@ -240,7 +203,7 @@ if not st.session_state.started:
 
     st.stop()
 
-# ================= EKRAN 2 =================
+# ================= EKRAN 2 (INTERFEJS KODOWANIA) =================
 with st.sidebar:
     st.markdown("### Instrukcja do zadania")
     st.markdown(
@@ -265,9 +228,7 @@ with st.sidebar:
     st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
 
     if st.button("Wyloguj się"):
-        if not st.session_state.get('is_dedicated_coder', False):
-            cleanup_my_reservations()
-        for key in ['user_name', 'target_column', 'is_dedicated_coder', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
+        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -301,14 +262,9 @@ with st.sidebar:
     )
 
 
-# --- REZERWACJA PACZKI LOSOWYCH WIERSZY ---
-def reserve_batch(batch_size=20):
+# --- POBIERANIE WIERSZY DLA DANEGO KODERA ---
+def fetch_user_batch(batch_size=20):
     target_col = st.session_state.target_column
-    is_dedicated = st.session_state.is_dedicated_coder
-    user_name = st.session_state.user_name
-
-    if not is_dedicated:
-        cleanup_my_reservations()
 
     sheet = get_sheet()
     records = sheet.get_all_records()
@@ -317,51 +273,33 @@ def reserve_batch(batch_size=20):
 
     df = pd.DataFrame(records)
 
-    for col in ['bednarek', 'janowski', 'coder1', 'reserved_by']:
-        if col not in df.columns:
-            df[col] = ''
+    # Jeśli z jakiegoś powodu kolumny nie ma w pobranym DF, dodajemy pustą
+    if target_col not in df.columns:
+        df[target_col] = ''
 
     free_indices = []
 
+    # Szukamy wyłącznie niezakodowanych wierszy w dedykowanej kolumnie
     for idx, row in df.iterrows():
-        if is_dedicated:
-            val = str(row[target_col]).strip()
-            if not val or val in ['None', 'nan']:
-                free_indices.append(idx)
-        else:
-            coder1_val = str(row['coder1']).strip()
-            res_user = parse_reservation(row['reserved_by'])
-
-            is_unannotated = not coder1_val or coder1_val in ['None', 'nan']
-            is_free_reservation = (res_user is None) or (res_user == user_name)
-
-            if is_unannotated and is_free_reservation:
-                free_indices.append(idx)
+        val = str(row[target_col]).strip()
+        if not val or val in ['None', 'nan']:
+            free_indices.append(idx)
 
     if not free_indices:
         return pd.DataFrame()
 
-    # Losowanie wierszy
+    # Losowanie wierszy z niezakodowanej puli
     if len(free_indices) <= batch_size:
         selected_indices = free_indices
     else:
         selected_indices = random.sample(free_indices, batch_size)
 
-    if not is_dedicated:
-        reserved_col_idx = df.columns.get_loc('reserved_by') + 1
-        cells_to_update = [
-            gspread.Cell(row=idx + 2, col=reserved_col_idx, value=user_name)
-            for idx in selected_indices
-        ]
-        sheet.update_cells(cells_to_update)
-
-    reserved_df = df.loc[selected_indices].copy()
-    return reserved_df
+    return df.loc[selected_indices].copy()
 
 
 if 'my_batch' not in st.session_state:
     with st.spinner("Pobieram nową porcję przykładów z bazy..."):
-        st.session_state.my_batch = reserve_batch(batch_size=20)
+        st.session_state.my_batch = fetch_user_batch(batch_size=20)
         st.session_state.current_in_batch = 0
         st.session_state.round_finished = False
 
@@ -373,22 +311,18 @@ def save_annotation(row_index, value):
         return
 
     df_cols = list(records[0].keys())
-    sheet_row_num = row_index + 2
+    sheet_row_num = row_index + 2  # +1 na nagłówek, +1 na indeksowanie od 1 w gspread
 
     target_col = st.session_state.target_column
-    target_col_idx = df_cols.index(target_col) + 1
+    
+    # Zabezpieczenie pobierania indeksu kolumny
+    if target_col in df_cols:
+        target_col_idx = df_cols.index(target_col) + 1
+    else:
+        headers = sheet.row_values(1)
+        target_col_idx = headers.index(target_col) + 1
 
-    cells_to_update = [
-        gspread.Cell(row=sheet_row_num, col=target_col_idx, value=str(value))
-    ]
-
-    if not st.session_state.is_dedicated_coder and 'reserved_by' in df_cols:
-        reserved_col_idx = df_cols.index('reserved_by') + 1
-        cells_to_update.append(
-            gspread.Cell(row=sheet_row_num, col=reserved_col_idx, value='')
-        )
-
-    sheet.update_cells(cells_to_update)
+    sheet.update_cell(sheet_row_num, target_col_idx, str(value))
 
     st.session_state.my_batch.loc[row_index, target_col] = str(value)
     st.session_state.current_in_batch += 1
@@ -403,7 +337,7 @@ def save_annotation(row_index, value):
 target_col = st.session_state.target_column
 
 if st.session_state.my_batch.empty:
-    st.success(f"Brak więcej przykładów do zakodowania w kolumnie: **{target_col}**")
+    st.success(f"Brak więcej przykładów do zakodowania w Twojej kolumnie: **{target_col}**!")
 
 else:
     unannotated_in_batch = st.session_state.my_batch[
@@ -420,7 +354,7 @@ else:
         with col_continue:
             if st.button("Zacznij nową rundę!", use_container_width=True):
                 with st.spinner("Szukam nowej partii..."):
-                    st.session_state.my_batch = reserve_batch(batch_size=20)
+                    st.session_state.my_batch = fetch_user_batch(batch_size=20)
                     st.session_state.current_in_batch = 0
                     st.session_state.round_finished = False
                 st.rerun()
