@@ -650,20 +650,6 @@ else:
             ranking_df = stats['ranking_df']
             top_3 = stats['top_3']
 
-            # SPRAWDAJEMY MIEJSCE UŻYTKOWNIKA I WYŚWIETLAMY DEDYKOWANY KOMUNIKAT W ŻÓŁTYM OKIENKU
-            if user_rank == 1:
-                st.warning("WOW! Świetna robota, konkurencja nie ma z Tobą szans!")
-            elif user_rank == 2:
-                user_1st = ranking_df[ranking_df['rank'] == 1]['koder'].values[0]
-                st.warning(f"Tak blisko! Jeszcze chwilę i przegonisz **{user_1st}**. Nie ma co się teraz poddawać!")
-            elif user_rank == 3:
-                user_1st = ranking_df[ranking_df['rank'] == 1]['koder'].values[0]
-                user_2nd = ranking_df[ranking_df['rank'] == 2]['koder'].values[0]
-                st.warning(f"Brawo, to już podium! To co? Jeszcze parę przykładów, żeby przegonić **{user_1st}** i **{user_2nd}**?")
-            else:
-                top_3_names = ", ".join([f"**{item['koder']}**" for item in top_3])
-                st.warning(f"Super robota!! Chcesz przegonić {top_3_names}? Nie ma na co czekać!")
-
             col_left, col_right = st.columns(2)
             
             with col_left:
@@ -686,6 +672,20 @@ else:
                     st.markdown("### TOP 3 najaktywniejszych osób kodujących")
                     for i, item in enumerate(stats['top_3']):
                         st.markdown(f"**{i+1}. {item['koder']}** — {item['count']} ocen")
+
+            # KOMUNIKAT MOTYWACYJNY W ŻÓŁTYM PASU – UMIESZCZONY BEZPOŚREDNIO POD RANKIENGEM
+            if user_rank == 1:
+                st.warning("WOW! Świetna robota, konkurencja nie ma z Tobą szans!")
+            elif user_rank == 2:
+                user_1st = ranking_df[ranking_df['rank'] == 1]['koder'].values[0]
+                st.warning(f"Tak blisko! Jeszcze chwilę i przegonisz **{user_1st}**. Nie ma co się teraz poddawać!")
+            elif user_rank == 3:
+                user_1st = ranking_df[ranking_df['rank'] == 1]['koder'].values[0]
+                user_2nd = ranking_df[ranking_df['rank'] == 2]['koder'].values[0]
+                st.warning(f"Brawo, to już podium! To co? Jeszcze parę przykładów, żeby przegonić **{user_1st}** i **{user_2nd}**?")
+            else:
+                top_3_names = ", ".join([f"**{item['koder']}**" for item in top_3])
+                st.warning(f"Super robota!! Chcesz przegonić {top_3_names}? Nie ma na co czekać!")
 
             st.markdown("---")
             
