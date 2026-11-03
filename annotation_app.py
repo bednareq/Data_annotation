@@ -562,12 +562,18 @@ if 'my_batch' not in st.session_state:
 
 def save_annotation(row_index, value):
     try:
-        sheet = get_sheet()
-        sheet_row_num = row_index + 2
         target_col = st.session_state.target_column
 
+        # 1. POBIERAMY OBECNY RANKING PRZED ZAPISANIEM NOWEJ OCENY
+        prev_stats = calculate_gamification_stats(target_col)
+        if prev_stats:
+            st.session_state.last_rank = prev_stats['user_rank']
+
+        # 2. ZAPISUJEMY NOWĄ OCENĘ DO GOOGLE SHEETS I SESJI
+        sheet = get_sheet()
+        sheet_row_num = row_index + 2
+
         headers = sheet.row_values(1)
-        
         if target_col in headers:
             target_col_idx = headers.index(target_col) + 1
         else:
@@ -579,29 +585,26 @@ def save_annotation(row_index, value):
         st.session_state.my_batch.loc[row_index, target_col] = str(value)
         st.session_state.current_in_batch += 1
 
-        # PRZED ZAPISANIEM POBIERAMY OBECNĄ POZYCJĘ I RANKING
-        prev_stats = calculate_gamification_stats(target_col)
-        if prev_stats:
-            st.session_state.last_rank = prev_stats['user_rank']
-
         if st.session_state.current_in_batch >= len(st.session_state.my_batch):
             st.session_state.round_finished = True
 
-        # SPRAWDZENIE CZY PRZEGONIŁO KOGOŚ Z TOP 3
+        # 3. SPRAWDZAMY NOWY RANKING PO ZAPISIE
         new_stats = calculate_gamification_stats(target_col)
-        if new_stats and st.session_state.last_rank:
+        if new_stats and st.session_state.last_rank is not None:
             new_rank = new_stats['user_rank']
             prev_rank = st.session_state.last_rank
             
-            # Jeśli awansowaliśmy na pozycję 1, 2 lub 3 z wyższej pozycji
+            # Jeśli awansowaliśmy na pozycję 1, 2 lub 3 z niższej pozycji
             if new_rank < prev_rank and new_rank <= 3:
                 ranking_df = new_stats['ranking_df']
-                # Osoba przegoniona znajduje się obecnie o jedno miejsce niżej
                 overtaken_row = ranking_df[ranking_df['rank'] == new_rank + 1]
                 if not overtaken_row.empty:
-                    overtaken_nick = overtaken_row['koder'].values[0]
-                    st.session_state.overtaken_user = overtaken_nick
+                    st.session_state.overtaken_user = overtaken_row['koder'].values[0]
                     st.session_state.overtaken_target_rank = new_rank
+            else:
+                # Resetujemy powiadomienie, jeśli nie było awansu
+                st.session_state.overtaken_user = None
+                st.session_state.overtaken_target_rank = None
             
             st.session_state.last_rank = new_rank
 
@@ -717,7 +720,7 @@ else:
                 top_3_names = ", ".join([f"**{item['koder']}**" for item in top_3])
                 st.warning(f"Świetny wynik! Podium jest w Twoim zasięgu — wystarczy przegonić {top_3_names}. Do dzieła!")
             else:
-                st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale... może czas pokazać wszystkim, gdzie ich miejsce? Co powiesz na kolejną rundę?")
+                st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale... może jednak chcesz pokazać tej trójce, gdzie ich miejsce? Co powiesz na kolejną rundę?")
 
             st.markdown("---")
             
@@ -735,7 +738,6 @@ else:
 
         col_continue, col_stop = st.columns(2)
         with col_continue:
-            # ETYKIETA PRZYCISKU DLA 1. MIEJSCA BEZ NAWIASU
             btn_label = "Zacznij nową rundę!"
             if stats and stats['user_rank'] == 1:
                 btn_label = "Nie ma co osiadać na laurach, nie pozwól się zdeklasować!"
@@ -770,9 +772,7 @@ else:
         # DYNAMICZNE PODŚWIETLANIE SŁOWA I JEGO ODMIENIONYCH FORM
         highlighted_comment = comment
         if word:
-            # Tworzymy rdzeń słowa (odcinamy ost. literę jeśli długość > 3)
             stem = word[:-1] if len(word) > 3 else word
-            # Wzorzec dopasowuje słowo rozpoczynające się od rdzenia z granicą słowa \b
             pattern = re.compile(r'\b' + re.escape(stem) + r'\w*', re.IGNORECASE)
             highlighted_comment = pattern.sub(lambda m: f"<b>{m.group(0)}</b>", comment)
 
