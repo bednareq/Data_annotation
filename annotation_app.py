@@ -720,7 +720,7 @@ else:
                 top_3_names = ", ".join([f"**{item['koder']}**" for item in top_3])
                 st.warning(f"Świetny wynik! Podium jest w Twoim zasięgu — wystarczy przegonić {top_3_names}. Do dzieła!")
             else:
-                st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale... może jednak chcesz pokazać tej trójce, gdzie ich miejsce? Co powiesz na kolejną rundę?")
+                st.warning("Idzie Ci świetnie! Pozycja w rankingu to nie wszystko, ale... może czas pokazać wszystkim, gdzie ich miejsce? Co powiesz na kolejną rundę?")
 
             st.markdown("---")
             
