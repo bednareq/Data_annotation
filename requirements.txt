@@ -2,3 +2,4 @@ streamlit
 pandas
 gspread
 google-auth
+extra-streamlit-components
