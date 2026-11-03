@@ -13,12 +13,19 @@ PASSWORDS = {
     'janowski': st.secrets["passwords"]["janowski"],
 }
 
-# --- KONFIGURACJA STRONY I WERSJI WIDOKU ---
+# --- STANY SESJI ---
 if 'view_mode' not in st.session_state:
     st.session_state.view_mode = 'mobilna'
 
+if 'started' not in st.session_state:
+    st.session_state.started = False
+
+
+# --- DYNAMICZNA KONFIGURACJA STRONY (SIDEBAR ZAMKNIĘTY NA EKRANIE 1, OTWARTY NA EKRANIE 2) ---
+sidebar_state = "expanded" if st.session_state.started else "collapsed"
+
 if st.session_state.view_mode == 'mobilna':
-    st.set_page_config(page_title="Slang czy nie slang?", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="Slang czy nie slang?", layout="wide", initial_sidebar_state=sidebar_state)
     st.markdown(
         """
         <style>
@@ -47,7 +54,7 @@ if st.session_state.view_mode == 'mobilna':
         unsafe_allow_html=True
     )
 else:
-    st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state=sidebar_state)
 
 
 # --- GOOGLE SHEETS CONNECTION ---
@@ -88,17 +95,14 @@ def get_cookie_manager():
 cookie_manager = get_cookie_manager()
 
 
-# --- EKRAN STARTOWY ---
-if 'started' not in st.session_state:
-    st.session_state.started = False
-
+# ================= EKRAN 1: STARTOWY =================
 if not st.session_state.started:
     st.title("Slang czy nie slang? Oto jest pytanie")
 
     st.markdown(
         """
         ### Instrukcja i zadanie
-        Twoim zadaniem jest określenie, czy wskazane słowo zostało użyte w widocznym na ekranie komentarzu zgodnie z **podaną** definicją.
+        Twoim zadaniem jest określenie, czy **wskazane słowo** zostało użyte w widocznym na ekranie **tekście** zgodnie z **podaną definicją**.
 
         ### Ważne
         W trakcie oceny bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
@@ -106,20 +110,19 @@ if not st.session_state.started:
     )
 
     st.markdown("---")
-    st.markdown("### Identyfikacja ankietowanego")
-    st.info(
-        "**Informacja:** Jeśli kodujesz pierwszy raz, wpisz swój dowolny nick lub imię. "
-        "Przeglądarka zapamięta Cię na tym urządzeniu. Jeśli będziesz chciał/a kontynuować pracę z innego urządzenia, "
-        "wpisz ten sam nick."
+    st.markdown("### Logowanie")
+    st.markdown(
+        "Jeśli kodujesz pierwszy raz, wpisz swój dowolny nick (np. imię). Przeglądarka zapamięta Cię na tym urządzeniu. "
+        "Jeśli będziesz chciał_a kontynuować pracę z innego urządzenia, wpisz ten sam nick."
     )
 
     # Odczyt zapisanego nicku z cookies (jeśli istnieje)
     saved_nick = cookie_manager.get(cookie="annotator_nick") or ""
 
     user_nick_input = st.text_input(
-        "Wpisz swój nick / imię:",
+        "Wpisz swój nick:",
         value=saved_nick,
-        placeholder="np. Kasia, Marek, Ania..."
+        placeholder="np. Kuba, Marek12, Dinozaur"
     )
 
     clean_nick = user_nick_input.strip()
@@ -142,11 +145,12 @@ if not st.session_state.started:
             if safe_nick in existing_cols and saved_nick != safe_nick:
                 st.warning(
                     f"Nick **{clean_nick}** znajduje się już w bazie.\n\n"
-                    "• Jeśli to Ty wracasz do swojej ankiety z nowego urządzenia lub przeglądarki – kliknij przycisk poniżej, aby kontynuować.\n"
-                    "• Jeśli jesteś nowym koderem – zmień nick (np. dodaj inicjał lub cyfrę), aby utworzyć własną kolumnę."
+                    "Jeśli to Ty wracasz do gry z nowego urządzenia lub przeglądarki: kliknij przycisk poniżej, aby kontynuować.\n\n"
+                    "Jeśli jesteś nową osobą kodującą: zmień proszę swój nick (np. dodaj cyfrę), aby utworzyć dedykowaną Ci kolumnę."
                 )
                 
-                if st.button(f"Kontynuuj jako {clean_nick}"):
+                # Przycisk w kolorze czerwonym (dzięki nadrzędnemu elementowi lub stylizacji st.button)
+                if st.button(f"Kontynuuj jako {clean_nick}", type="primary"):
                     st.session_state.started = True
                     st.session_state.user_name = safe_nick
                     st.session_state.target_column = safe_nick
@@ -223,12 +227,12 @@ if not st.session_state.started:
     st.stop()
 
 
-# ================= EKRAN 2 (INTERFEJS KODOWANIA) =================
+# ================= EKRAN 2: INTERFEJS KODOWANIA =================
 with st.sidebar:
     st.markdown("### Instrukcja do zadania")
     st.markdown(
         """
-        **Zadanie:** Określ, czy słowo w komentarzu zostało użyte zgodnie z **podaną** definicją.  
+        **Zadanie:** Określ, czy **wskazane słowo** zostało użyte w widocznym na ekranie **tekście** zgodnie z **podaną definicją**.  
         **Uwaga:** Bierz pod uwagę **wyłącznie podaną definicję**, nawet jeśli prywatnie się z nią nie zgadzasz.
         """
     )
@@ -236,9 +240,9 @@ with st.sidebar:
     st.markdown("### Legenda ocen")
     st.markdown(
         """
-        * `Zgodne z definicją`: Słowo zostało użyte w komentarzu zgodnie z **podaną** definicją.
-        * `Niezgodne z definicją`: Słowo **nie** zostało użyte w komentarzu zgodnie z **podaną** definicją.
-        * `Brak kontekstu`: Wybierz wtedy, gdy komentarz jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
+        * `Zgodne z definicją`: Słowo zostało użyte w tekście zgodnie z **podaną** definicją.
+        * `Niezgodne z definicją`: Słowo **nie** zostało użyte w tekście zgodnie z **podaną** definicją.
+        * `Brak kontekstu`: Wybierz wtedy, gdy tekst jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
         * `Nie wiem`: Wybierz wtedy, gdy masz **wątpliwości** i nie jesteś pewien/a, czy słowo jest użyte zgodnie z definicją.
         """
     )
