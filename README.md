@@ -21,7 +21,7 @@ Głównym celem aplikacji jest pozyskanie ludzkich etykiet adnotacyjnych dla wys
 ### 1. System paczkowania i pobierania zadań
 * **Losowanie paczek:** Użytkownik po podaniu nicku otrzymuje indywidualną paczkę **20 losowych przykładów**, których jeszcze nie zakodował.
 * **Ochrona przed limitami API:** Dane pobierane są z arkusza jednorazowo w zkeszowanej sesji (`@st.cache_resource`), a zapis ocen odbywa się w tle w czasie rzeczywistym.
-* **Progres rundy:** Interaktywny pasek postępu (progress bar) informuje o liczbie ukończonych zadań w bieżącej rundzie ($X / 20$).
+* **Progres rundy:** Interaktywny pasek postępu (progress bar) informuje o liczbie ukończonych zadań w bieżącej rundzie.
 
 ### 2. Wyświetlanie kontekstu i podświetlanie rdzenia (Stemming / Regex)
 * **Automatyczne podświetlanie:** Aplikacja dynamicznie odnajduje oceniane słowo w tekście i je pogrubia (`<b>`).
