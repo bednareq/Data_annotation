@@ -74,8 +74,14 @@ def ensure_user_column_exists(user_col_name):
         new_col_idx = len(headers) + 1
         sheet.update_cell(1, new_col_idx, user_col_name)
 
-# --- MANAGERA COOKIES ---
-# --- MANAGERA COOKIES ---
+def get_existing_columns():
+    """Zwraca listę nagłówków z pierwszego wiersza arkusza (sprowadzonych do małych liter)."""
+    sheet = get_sheet()
+    headers = sheet.row_values(1)
+    return [h.strip().lower() for h in headers]
+
+
+# --- OBSŁUGA COOKIES ---
 def get_cookie_manager():
     return stx.CookieManager(key="annotator_cookie_manager")
 
@@ -100,47 +106,60 @@ if not st.session_state.started:
     )
 
     st.markdown("---")
-    st.markdown("### 👤 Identyfikacja ankietowanego")
+    st.markdown("### Identyfikacja ankietowanego")
     st.info(
-        "**Informacja:** Jeśli kodujesz pierwszy raz, ustaw swój nick poniżej. "
-        "Przy następnych logowaniach przeglądarka powinna sama Cię zalogować do Twojej dedykowanej kolumny "
-        "(o ile łączysz się z tego samego urządzenia). Jeśli chcesz kontynuować z innego urządzenia lub przeglądarki, "
-        "wpisz swój wcześniej użyty nick ręcznie."
+        "**Informacja:** Jeśli kodujesz pierwszy raz, wpisz swój dowolny nick lub imię. "
+        "Przeglądarka zapamięta Cię na tym urządzeniu. Jeśli będziesz chciał/a kontynuować pracę z innego urządzenia, "
+        "wpisz ten sam nick."
     )
 
-    # Odczyt nicku z cookies (jeśli istnieje)
+    # Odczyt zapisanego nicku z cookies (jeśli istnieje)
     saved_nick = cookie_manager.get(cookie="annotator_nick") or ""
-    
+
     user_nick_input = st.text_input(
         "Wpisz swój nick / imię:",
         value=saved_nick,
-        placeholder="np. Ania, Koder12..."
+        placeholder="np. Kasia, Marek, Ania..."
     )
 
-    if st.button("Start!", type="primary"):
-        clean_nick = user_nick_input.strip()
-        
-        if not clean_nick and 'dedicated_login' not in st.session_state:
-            st.error("Proszę podać nick przed rozpoczęciem kodowania!")
-        else:
+    clean_nick = user_nick_input.strip()
+    safe_nick = "".join(c for c in clean_nick if c.isalnum() or c in ('_', '-')).lower()
+
+    if st.button("Start / Kontynuuj", type="primary"):
+        if 'dedicated_login' in st.session_state:
+            # Logowanie badacza (Bednarek / Janowski)
             st.session_state.started = True
+            st.session_state.user_name = st.session_state.dedicated_login
+            st.session_state.target_column = st.session_state.dedicated_login
+            ensure_user_column_exists(st.session_state.dedicated_login)
+            st.rerun()
+        elif not safe_nick:
+            st.error("Proszę podać nick przed rozpoczęciem!")
+        else:
+            existing_cols = get_existing_columns()
             
-            if 'dedicated_login' in st.session_state:
-                st.session_state.user_name = st.session_state.dedicated_login
-                st.session_state.target_column = st.session_state.dedicated_login
+            # Nick istnieje w bazie, ale w cookies go brak (nowe urządzenie / inny użytkownik)
+            if safe_nick in existing_cols and saved_nick != safe_nick:
+                st.warning(
+                    f"Nick **{clean_nick}** znajduje się już w bazie.\n\n"
+                    "• Jeśli to Ty wracasz do swojej ankiety z nowego urządzenia lub przeglądarki – kliknij przycisk poniżej, aby kontynuować.\n"
+                    "• Jeśli jesteś nowym koderem – zmień nick (np. dodaj inicjał lub cyfrę), aby utworzyć własną kolumnę."
+                )
+                
+                if st.button(f"Kontynuuj jako {clean_nick}"):
+                    st.session_state.started = True
+                    st.session_state.user_name = safe_nick
+                    st.session_state.target_column = safe_nick
+                    cookie_manager.set("annotator_nick", safe_nick, max_age=30*24*3600)
+                    st.rerun()
             else:
-                # Normalny koder – czyszczenie nicku z niedozwolonych znaków
-                safe_nick = "".join(c for c in clean_nick if c.isalnum() or c in ('_', '-')).lower()
+                # Pierwsze wejście nowego kodera lub powrót na tym samym urządzeniu
+                st.session_state.started = True
                 st.session_state.user_name = safe_nick
                 st.session_state.target_column = safe_nick
-                
-                # Zapisujemy nick w cookies na 30 dni
                 cookie_manager.set("annotator_nick", safe_nick, max_age=30*24*3600)
-                
-                # Upewniamy się, że kolumna istnieje w Google Sheets
                 ensure_user_column_exists(safe_nick)
-                
-            st.rerun()
+                st.rerun()
 
     with st.sidebar:
         st.markdown("### Panel badacza")
@@ -202,6 +221,7 @@ if not st.session_state.started:
     )
 
     st.stop()
+
 
 # ================= EKRAN 2 (INTERFEJS KODOWANIA) =================
 with st.sidebar:
@@ -273,13 +293,11 @@ def fetch_user_batch(batch_size=20):
 
     df = pd.DataFrame(records)
 
-    # Jeśli z jakiegoś powodu kolumny nie ma w pobranym DF, dodajemy pustą
     if target_col not in df.columns:
         df[target_col] = ''
 
     free_indices = []
 
-    # Szukamy wyłącznie niezakodowanych wierszy w dedykowanej kolumnie
     for idx, row in df.iterrows():
         val = str(row[target_col]).strip()
         if not val or val in ['None', 'nan']:
@@ -288,7 +306,6 @@ def fetch_user_batch(batch_size=20):
     if not free_indices:
         return pd.DataFrame()
 
-    # Losowanie wierszy z niezakodowanej puli
     if len(free_indices) <= batch_size:
         selected_indices = free_indices
     else:
@@ -311,11 +328,10 @@ def save_annotation(row_index, value):
         return
 
     df_cols = list(records[0].keys())
-    sheet_row_num = row_index + 2  # +1 na nagłówek, +1 na indeksowanie od 1 w gspread
+    sheet_row_num = row_index + 2
 
     target_col = st.session_state.target_column
     
-    # Zabezpieczenie pobierania indeksu kolumny
     if target_col in df_cols:
         target_col_idx = df_cols.index(target_col) + 1
     else:
@@ -380,7 +396,7 @@ else:
             unsafe_allow_html=True
         )
         st.markdown(
-            f"<div style='font-size:1.1rem; margin-bottom:0.4rem;'><b>Komentarz:</b></div>",
+            f"<div style='font-size:1.1rem; margin-bottom:0.4rem;'><b>Oceniany tekst:</b></div>",
             unsafe_allow_html=True
         )
         with st.container(border=True):
