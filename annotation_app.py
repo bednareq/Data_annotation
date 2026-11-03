@@ -75,9 +75,9 @@ def ensure_user_column_exists(user_col_name):
         sheet.update_cell(1, new_col_idx, user_col_name)
 
 # --- MANAGERA COOKIES ---
-@st.cache_resource(experimental_allow_widgets=True)
+# --- MANAGERA COOKIES ---
 def get_cookie_manager():
-    return stx.CookieManager()
+    return stx.CookieManager(key="annotator_cookie_manager")
 
 cookie_manager = get_cookie_manager()
 
