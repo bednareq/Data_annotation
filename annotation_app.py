@@ -8,7 +8,7 @@ import extra_streamlit_components as stx
 from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
-BASE_COLUMNS = ['word', 'definition', 'comment']  # Kolumny niebędące osobami kodującymi
+BASE_COLUMNS = ['word', 'definition', 'comment', 'rating']  # Kolumny niebędące osobami kodującymi
 
 # --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (ZACIĄGANE Z st.secrets) ---
 PASSWORDS = {
