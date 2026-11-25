@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
 BASE_COLUMNS = ['word', 'definition', 'comment', 'rating']  # Kolumny niebędące osobami kodującymi
-INFLECTION_MAP_PATH = "final_data/miejski_podstawa_to_fleksja.json"  # <-- ŚCIEŻKA DO SŁOWNIKA FORM FLEKSYJNYCH
+INFLECTION_MAP_PATH = "miejski_podstawa_to_fleksja.json"  # <-- ŚCIEŻKA DO SŁOWNIKA FORM FLEKSYJNYCH
 PL_WORD_RE = re.compile(r'[a-zA-Z0-9ąęćłńóśźżĄĘĆŁŃÓŚŹŻ]+')
 
 # --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (ZACIĄGANE Z st.secrets) ---
