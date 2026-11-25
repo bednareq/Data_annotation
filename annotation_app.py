@@ -1,3 +1,4 @@
+import json
 import pandas as pd
 import streamlit as st
 import gspread
@@ -9,6 +10,8 @@ from google.oauth2.service_account import Credentials
 
 SPREADSHEET_NAME = "Sample_annotation"
 BASE_COLUMNS = ['word', 'definition', 'comment', 'rating']  # Kolumny niebędące osobami kodującymi
+INFLECTION_MAP_PATH = "final_data/miejski_podstawa_to_fleksja.json"  # <-- ŚCIEŻKA DO SŁOWNIKA FORM FLEKSYJNYCH
+PL_WORD_RE = re.compile(r'[a-zA-Z0-9ąęćłńóśźżĄĘĆŁŃÓŚŹŻ]+')
 
 # --- HASŁA DLA DEDYKOWANYCH ADNOTATORÓW (ZACIĄGANE Z st.secrets) ---
 PASSWORDS = {
@@ -76,6 +79,25 @@ if st.session_state.view_mode == 'mobilna':
     )
 else:
     st.set_page_config(page_title="Slang czy nie slang?", layout="centered", initial_sidebar_state=sidebar_state)
+
+
+# --- ŁADOWANIE SŁOWNIKA FORM FLEKSYJNYCH ---
+@st.cache_data
+def load_inflection_map(path=INFLECTION_MAP_PATH):
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+        inflection_map = {}
+        for lemma, forms in raw.items():
+            clean_lemma = str(lemma).strip().lower()
+            if not clean_lemma:
+                continue
+            form_set = {str(form).strip().lower() for form in forms if str(form).strip()}
+            form_set.add(clean_lemma)
+            inflection_map[clean_lemma] = form_set
+        return inflection_map
+    except Exception:
+        return {}
 
 
 # --- POMOCNICZA FUNKCJA OBSŁUGI BŁĘDU LIMITÓW ---
@@ -823,13 +845,18 @@ else:
         definition = current_row.get('definition', '')
         comment = str(current_row.get('comment', ''))
 
-        # DYNAMICZNE PODŚWIETLANIE SŁOWA I JEGO ODMIENIONYCH FORM
+        # DYNAMICZNE PODŚWIETLANIE SŁOWA I JEGO FORM FLEKSYJNYCH ZE SŁOWNIKA POLIMORF
+        inflection_map = load_inflection_map()
         highlighted_comment = comment
         if word:
-            stem = word[:-1] if len(word) > 3 else word
-            pattern = re.compile(r'\b' + re.escape(stem) + r'\w*', re.IGNORECASE)
-            highlighted_comment = pattern.sub(
-                lambda m: f"<mark style='padding: 0 3px; border-radius: 3px;'>{m.group(0)}</mark>",
+            lemma = word.lower()
+            valid_forms = inflection_map.get(lemma, {lemma})
+            highlighted_comment = PL_WORD_RE.sub(
+                lambda m: (
+                    f"<mark style='padding: 0 3px; border-radius: 3px;'>{m.group(0)}</mark>"
+                    if m.group(0).lower() in valid_forms
+                    else m.group(0)
+                ),
                 comment
             )
 
