@@ -38,6 +38,9 @@ if 'overtaken_user' not in st.session_state:
 if 'overtaken_target_rank' not in st.session_state:
     st.session_state.overtaken_target_rank = None
 
+if 'last_annotated_index' not in st.session_state:
+    st.session_state.last_annotated_index = None
+
 
 # --- DYNAMICZNA KONFIGURACJA STRONY ---
 sidebar_state = "expanded" if st.session_state.started or st.session_state.show_only_stats else "collapsed"
@@ -427,7 +430,6 @@ if not st.session_state.started:
             if st.button("Zaloguj", use_container_width=True, type="primary"):
                 target_user = 'bednarek' if selected_login == 'Bednarek' else 'janowski'
                 if login_pw == PASSWORDS[target_user]:
-                    # POPRAWKA 2: Przenosimy bezpośrednio do zadania i odświeżamy stronę
                     st.session_state.dedicated_login = target_user
                     st.session_state.user_name = target_user
                     st.session_state.target_column = target_user
@@ -482,10 +484,10 @@ with st.sidebar:
     st.markdown("### Legenda ocen")
     st.markdown(
         """
-        * `Zgodne z definicją`: Słowo zostało użyte w tekście zgodnie z **podaną** definicją.
-        * `Niezgodne z definicją`: Słowo **nie** zostało użyte w tekście zgodnie z **podaną** definicją.
-        * `Brak kontekstu`: Wybierz wtedy, gdy tekst jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustalić zgodność z definicją.
-        * `Nie wiem`: Wybierz wtedy, gdy mimo wystarczającego kontekstu masz **wątpliwości**, czy słowo jest użyte zgodnie z definicją.
+- `Zgodne z definicją`: Słowo zostało użyte w tekście zgodnie z **podaną** definicją.
+- `Niezgodne z definicją`: Słowo **nie** zostało użyte w tekście zgodnie z **podaną** definicją.
+- `Brak kontekstu`: Wybierz wtedy, gdy tekst jest **zbyt krótki** lub **brakuje w nim wystarczającego kontekstu**, aby ustarczająco ustalić zgodność z definicją.
+- `Nie wiem`: Wybierz wtedy, gdy mimo wystarczającego kontekstu masz **wątpliwości**, czy słowo jest użyte zgodnie z definicją.
         """
     )
 
@@ -494,7 +496,7 @@ with st.sidebar:
     st.markdown(f"**Przypisana kolumna:** {st.session_state.target_column}")
 
     if st.button("Wyloguj się"):
-        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started', 'show_existing_warning', 'show_only_stats', 'stats_user_nick', 'last_rank', 'overtaken_user', 'overtaken_target_rank']:
+        for key in ['user_name', 'target_column', 'dedicated_login', 'selected_login', 'my_batch', 'current_in_batch', 'round_finished', 'started', 'show_existing_warning', 'show_only_stats', 'stats_user_nick', 'last_rank', 'overtaken_user', 'overtaken_target_rank', 'last_annotated_index']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
@@ -568,6 +570,7 @@ if 'my_batch' not in st.session_state:
         st.session_state.my_batch = fetch_user_batch(batch_size=20)
         st.session_state.current_in_batch = 0
         st.session_state.round_finished = False
+        st.session_state.last_annotated_index = None
 
 
 def save_annotation(row_index, value):
@@ -593,6 +596,7 @@ def save_annotation(row_index, value):
         sheet.update_cell(sheet_row_num, target_col_idx, str(value))
 
         st.session_state.my_batch.loc[row_index, target_col] = str(value)
+        st.session_state.last_annotated_index = row_index
         st.session_state.current_in_batch += 1
 
         if st.session_state.current_in_batch >= len(st.session_state.my_batch):
@@ -612,11 +616,39 @@ def save_annotation(row_index, value):
                     st.session_state.overtaken_user = overtaken_row['koder'].values[0]
                     st.session_state.overtaken_target_rank = new_rank
             else:
-                # Resetujemy powiadomienie, jeśli nie było awansu
                 st.session_state.overtaken_user = None
                 st.session_state.overtaken_target_rank = None
             
             st.session_state.last_rank = new_rank
+
+        st.rerun()
+    except Exception:
+        handle_api_error()
+
+
+def undo_last_annotation():
+    """Cofa ostatnio zapisaną ocenę w bieżącej rundzie (maksymalnie o 1 krok)."""
+    last_idx = st.session_state.get('last_annotated_index')
+    if last_idx is None:
+        return
+
+    try:
+        target_col = st.session_state.target_column
+        sheet = get_sheet()
+        sheet_row_num = last_idx + 2
+
+        headers = sheet.row_values(1)
+        if target_col in headers:
+            target_col_idx = headers.index(target_col) + 1
+            sheet.update_cell(sheet_row_num, target_col_idx, "")
+
+        # Przywracamy pustą wartość w lokalnej partii i cofamy liczniki
+        st.session_state.my_batch.loc[last_idx, target_col] = ''
+        st.session_state.current_in_batch = max(0, st.session_state.current_in_batch - 1)
+        st.session_state.round_finished = False
+        st.session_state.last_annotated_index = None
+        st.session_state.overtaken_user = None
+        st.session_state.overtaken_target_rank = None
 
         st.rerun()
     except Exception:
@@ -752,6 +784,11 @@ else:
 
         st.markdown("---")
 
+        # Możliwość cofnięcia ostatniego (20.) przykładu przed startem nowej rundy
+        if st.session_state.get('last_annotated_index') is not None:
+            if st.button("⬅️ Cofnij ostatni przykład z tej rundy", use_container_width=True):
+                undo_last_annotation()
+
         col_continue, col_stop = st.columns(2)
         with col_continue:
             btn_label = "Zacznij nową rundę!"
@@ -763,6 +800,7 @@ else:
                     st.session_state.my_batch = fetch_user_batch(batch_size=20)
                     st.session_state.current_in_batch = 0
                     st.session_state.round_finished = False
+                    st.session_state.last_annotated_index = None
                     st.session_state.overtaken_user = None
                     st.session_state.overtaken_target_rank = None
                 st.rerun()
@@ -827,7 +865,7 @@ else:
             if st.button("Nie wiem", use_container_width=True):
                 save_annotation(actual_index, "N")
 
-        # --- PASEK POSTĘPU W RUNDZIE ---
+        # --- PASEK POSTĘPU W RUNDZIE I PRZYCISK COFNIĘCIA ---
         st.markdown("---")
         total_batch_items = len(st.session_state.my_batch)
         current_item_idx = st.session_state.current_in_batch
@@ -837,3 +875,7 @@ else:
             progress_pct, 
             text=f"Postęp w obecnej rundzie: **{current_item_idx} / {total_batch_items}**"
         )
+
+        if st.session_state.get('last_annotated_index') is not None:
+            if st.button("⬅️ Cofnij poprzedni przykład", use_container_width=True):
+                undo_last_annotation()
