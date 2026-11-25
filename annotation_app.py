@@ -786,7 +786,7 @@ else:
 
         # Możliwość cofnięcia ostatniego (20.) przykładu przed startem nowej rundy
         if st.session_state.get('last_annotated_index') is not None:
-            if st.button("⬅️ Cofnij ostatni przykład z tej rundy", use_container_width=True):
+            if st.button("Cofnij do poprzedniego przykładu", use_container_width=True):
                 undo_last_annotation()
 
         col_continue, col_stop = st.columns(2)
@@ -828,7 +828,10 @@ else:
         if word:
             stem = word[:-1] if len(word) > 3 else word
             pattern = re.compile(r'\b' + re.escape(stem) + r'\w*', re.IGNORECASE)
-            highlighted_comment = pattern.sub(lambda m: f"<b>{m.group(0)}</b>", comment)
+            highlighted_comment = pattern.sub(
+                lambda m: f"<mark style='padding: 0 3px; border-radius: 3px;'>{m.group(0)}</mark>",
+                comment
+            )
 
         st.markdown(
             f"<div style='font-size:1.1rem;'><b>Słowo:</b>&nbsp; <span style='font-weight:normal;'>{word}</span></div>",
@@ -877,5 +880,5 @@ else:
         )
 
         if st.session_state.get('last_annotated_index') is not None:
-            if st.button("⬅️ Cofnij poprzedni przykład", use_container_width=True):
+            if st.button("Cofnij do poprzedniego przykładu", use_container_width=True):
                 undo_last_annotation()
