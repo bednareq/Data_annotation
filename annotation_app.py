@@ -907,5 +907,5 @@ else:
         )
 
         if st.session_state.get('last_annotated_index') is not None:
-            if st.button("Cofnij do poprzedniego przykładu", use_container_width=True):
+            if st.button("Wróć do poprzedniego przykładu", use_container_width=True):
                 undo_last_annotation()
